@@ -1,0 +1,1 @@
+{ "name": "labl-lint", "private": true, "devDependencies": { "eslint": "^9", "globals": "^15", "acorn": "^8", "acorn-walk": "^8" } }

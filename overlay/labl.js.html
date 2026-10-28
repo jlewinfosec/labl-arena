@@ -1,0 +1,381 @@
+<script>
+/* ============ LABL SHELL ============
+   One tablet, one role (Board Member), four screens: Arena (Bullet Ballet run-of-show), Mission Tablet (mini-games),
+   Scoreboard (player-facing standings), and the Board Member panel (roster, teams, toggles, settings, backup, CSV).
+   Everything below overrides EP entry points by reassigning their function bindings; the EP code itself is untouched. */
+"use strict";
+
+/* ---- modes (ep_kiosk values kept where EP had them) ---- */
+const LABL_MODE = { home: "0", arena: "6", mtablet: "7", board: "8" };
+const LABL_MODES = [
+  ["arena", "🏟 Arena", "run the day · clock · log rounds"],
+  ["mtablet", "▣ Mission Tablet", "players play the mini-games"],
+  ["board", "🏆 Scoreboard", "standings on the TV"],
+  ["home", "⚙ Board Member panel", "roster · teams · settings"]
+];
+const lablModeKey = () => Object.entries(LABL_MODE).find(([, v]) => v === modeVal())?.[0] || "home";
+const boardOn = () => modeVal() === LABL_MODE.board;
+
+/* ---- settings kept in ep_cfg.labl ---- */
+function lablCfg() {
+  const c = (loadCfg() || {}).labl || {};
+  return {
+    modesOff: Array.isArray(c.modesOff) ? c.modesOff : [],
+    gamesOff: Array.isArray(c.gamesOff) ? c.gamesOff : ["patrol", "bunker", "defuse"],
+    hard: c.hard !== false,            // offer the Hard setting on the Mission Tablet
+    story: c.story || { start: "", end: "", game: "" },
+    setup: !!c.setup                   // first-run done
+  };
+}
+function lablCfgSet(patch) {
+  const v = loadCfg();
+  v.labl = Object.assign({}, v.labl || {}, patch);
+  saveCfg(v);
+}
+function lablModes() { const off = lablCfg().modesOff; return BB_MODES .filter(m => !off.includes(m)); }
+
+/* ---- Story Mission: a normal round with a set beginning and end ---- */
+BB_MODES.push("Story Mission");
+BB_INFO["Story Mission"] = { k: "o", rules: "A story round. The Board Member reads the start and the end condition at the briefing." };
+function lablStoryApply() {
+  const s = lablCfg().story, parts = [];
+  if (s.start) parts.push("START: " + s.start);
+  if (s.end) parts.push("END: " + s.end);
+  if (s.game && GAMES[s.game]) parts.push("At the tablet: " + GAMES[s.game].title + ".");
+  BB_INFO["Story Mission"].rules = parts.length ? parts.join(" ") : "A story round. The Board Member reads the start and the end condition at the briefing.";
+}
+lablStoryApply();
+
+/* ---- no LAN hub in LABL: the sync strip is gone ---- */
+bbSyncStrip = () => el("span", { class: "bb-sync-off" });
+bbUnsynced = () => [];
+/* League Points: one per event to the top qualified squad (and large-field MVPs), kept in ep_bb.award */
+function lablPointsPlate() {
+  const A = Object.entries(BBS.get().award || {}).filter(([, a]) => !a.era || a.era === ERA);
+  const bySq = {};
+  A.forEach(([ev, a]) => (a.sqs || []).forEach(s => (bySq[s] = (bySq[s] || 0) + 1)));
+  const rows = Object.entries(bySq).sort((x, y) => y[1] - x[1]);
+  return plate(el("h2", {}, "League Points · " + ERA),
+    rows.length ? el("table", { class: "labl-table" }, el("tr", {}, el("th", {}, "#"), el("th", {}, "Squad"), el("th", {}, "Points")), ...rows.map(([s, n], i) => el("tr", {}, el("td", {}, String(i + 1)), el("td", {}, s), el("td", {}, String(n))))) : kp("No League Points awarded yet this season. The top qualified squad of each event day earns one (Arena › Standings).", "color:var(--bone-dim)"),
+    A.length ? kp(A.map(([ev, a]) => ev + ": " + a.sq + (a.mvpNames && a.mvpNames.length ? " · MVPs " + a.mvpNames.join(", ") : "")).join(" · "), "color:var(--bone-dim);font-size:calc(13px*var(--tx))") : null);
+}
+/* ---- one PIN ---- */
+arenaPinCheck = v => checkDirPin(v);
+const lablUnlocked = () => (DIR_OK && Date.now() - DIR_LAST < bbCfg().idleMin * 60000) || (typeof arenaUnlocked === "function" && arenaUnlocked());
+
+function lablPinBox(onOk, label) {
+  const inp = dirPinInput("BOARD MEMBER PIN"), out = el("div", { class: "msg bad" });
+  const tryIt = () => {
+    const r = checkDirPin(inp.value);
+    if (r === "ok") { SFX.good(); onOk(); } else { SFX.bad(); inp.value = ""; out.textContent = pinDeny(r); }
+  };
+  inp.addEventListener("keydown", e => { if (e.key === "Enter") tryIt(); });
+  setTimeout(() => inp.focus(), 60);
+  return el("div", { class: "labl-pin" }, inp, el("button", { class: "btn go", style: "width:100%;margin-top:8px;min-height:56px", onclick: tryIt }, label || "Open"), out);
+}
+
+/* ---- mode switcher (replaces EP's switchModal) ---- */
+switchModal = function (here) {
+  const ov = el("div", { class: "modal" }), box = el("div", { class: "modal-box plate labl-switch" }), close = () => ov.remove();
+  let dest = null;
+  const btns = LABL_MODES.map(([k, l, h]) => {
+    const b = el("button", { class: "btn modepick" + (k === here ? " here" : "") }, el("b", {}, l), el("span", { class: "modehelp" }, k === here ? "◂ you are here" : h));
+    if (k === here) b.disabled = true;
+    b.addEventListener("click", () => { dest = k; btns.forEach(([kk, bb]) => bb.classList.toggle("on", kk === dest)); if (!lablUnlocked()) inp.focus(); });
+    return [k, b];
+  });
+  const inp = dirPinInput("BOARD MEMBER PIN"), out = el("div", { class: "msg bad" });
+  const goNow = () => {
+    close(); evPlay("mode", SFX.good);
+    setMode(LABL_MODE[dest]);
+    if (dest === "home") { DIR_OK = true; DIR_LAST = Date.now(); go({ g: "home" }); }
+    else if (dest === "arena") { bbRunUnlock(); DIR_OK = false; go({ g: "bbrun" }); }
+    else if (dest === "mtablet") { DIR_OK = false; BBR_OK = 0; BB_ADMIN = 0; go({}); }
+    else { DIR_OK = false; BBR_OK = 0; BB_ADMIN = 0; go({ g: "board" }); }
+  };
+  const tryIt = () => {
+    if (!dest) { out.textContent = "> Pick a screen."; SFX.bad(); return; }
+    if (lablUnlocked()) return goNow();
+    const r = checkDirPin(inp.value);
+    if (r !== "ok") { SFX.bad(); inp.value = ""; out.textContent = pinDeny(r); return; }
+    goNow();
+  };
+  inp.addEventListener("keydown", e => { if (e.key === "Enter") tryIt(); });
+  box.append(
+    el("h3", {}, "LABL"), el("h1", { style: "font-size:calc(30px*var(--tx))" }, "Switch screen"),
+    el("div", { class: "modegrid" }, ...btns.map(x => x[1])),
+    lablUnlocked() ? kp("Unlocked: no PIN needed right now.", "color:var(--bone-dim)") : inp, out,
+    el("div", { class: "row", style: "gap:8px;margin-top:12px" }, el("button", { class: "btn", style: "flex:1", onclick: close }, "Cancel"), el("button", { class: "btn go", style: "flex:1", onclick: tryIt }, "Go"))
+  );
+  ov.append(box); document.body.append(ov);
+};
+
+/* ---- header used by LABL's own screens ---- */
+function lablBar(title, here, right) {
+  return el("div", { class: "labl-bar" },
+    el("div", { class: "labl-brand" }, epLogo({ tier: "compact" }), el("div", {}, el("div", { class: "labl-kicker" }, "LOUISIANA BLASTER LEAGUE"), el("div", { class: "labl-title" }, title))),
+    el("div", { class: "row", style: "gap:6px;justify-content:flex-end;align-items:center" }, ...(right || []), switchBtn(here, "font-size:calc(13px*var(--tx));min-height:34px"))
+  );
+}
+
+/* ---- router (replaces EP's routeTo) ---- */
+routeTo = function () {
+  PLAY_TOK++;
+  stop();
+  app.innerHTML = "";
+  if (!VIEW_KEEP) window.scrollTo(0, 0);
+  document.body.classList.remove("manualpg", "mappg");
+  const q = NAV, g = q.get("g");
+  document.body.classList.add("cb");
+  initPerf(); applyLighting(); applyMotion(); applyTextSize(); fitViewport();
+  document.body.classList.add("labl");
+  if (!lablCfg().setup) return lablFirstRun();
+  if (resolvePending()) return;                                   // a cut-off mini-game counts as a quit
+  // Arena
+  if (arenaOn() || g === "bbrun" || g === "bbterm") { if (!arenaOn()) setMode(LABL_MODE.arena); return arenaPage(); }
+  // Mission Tablet
+  if (MTAB()) {
+    if (g && GAMES[g]) return intro(g, GAMES[g].open ? 1 : clamp(parseInt(q.get("d") || "1", 10) || 1, 1, 2), { practice: q.get("p") === "1" });
+    if (g === "overwatch") return overwatchPage();
+    if (g === "bunkerpiece") return bunkerPiecePage();
+    if (g === "manual") return manualPage();
+    DIR_OK = false;
+    return mtabPage(g === "practice");
+  }
+  // Scoreboard
+  if (boardOn()) { DIR_OK = false; return lablBoard(); }
+  // Board Member panel (mode "0"): a mini-game opened from the panel's preview still plays here
+  if (g && GAMES[g]) return intro(g, clamp(parseInt(q.get("d") || "1", 10) || 1, 1, 2), { practice: true });
+  if (g === "manual") return manualPage();
+  if (g === "overwatch") return overwatchPage();
+  if (g === "bunkerpiece") return bunkerPiecePage();
+  return lablHome(q.get("tab") || "start");
+};
+
+/* ---- first run ---- */
+function lablFirstRun() {
+  const ev = el("input", { type: "text", class: "labl-in", value: "LABL " + new Date().toLocaleDateString("en-CA"), maxlength: "40" });
+  const se = el("input", { type: "text", class: "labl-in", value: ERA || "Season 1", maxlength: "30" });
+  const p1 = dirPinInput("NEW PIN"), p2 = dirPinInput("AGAIN"), out = el("div", { class: "msg bad" });
+  const okB = el("button", { class: "btn go", style: "width:100%;min-height:60px;margin-top:10px" }, "Set up this tablet");
+  okB.addEventListener("click", () => {
+    if (!/^\d{4}$/.test(p1.value) || p1.value !== p2.value) { out.textContent = "> Type the same 4-digit PIN twice."; SFX.bad(); return; }
+    const v = loadCfg(); v.dirPin = p1.value; v.offPins = Object.assign({}, v.offPins || {}, { arena: p1.value });
+    v.salt = ev.value.trim() || "LABL"; v.era = se.value.trim() || "Season 1";
+    v.labl = Object.assign({}, v.labl || {}, { setup: true });
+    v.bb = Object.assign({ min: 3, share: 0.5, charMin: 3, eraMin: 10, idleMin: 10 }, v.bb || {});
+    saveCfg(v); DIR_OK = true; DIR_LAST = Date.now(); SFX.good(); go({ g: "home" });
+  });
+  app.append(el("div", { class: "labl-splash" }, epLogo({}), el("h1", { class: "labl-h1" }, "LABL ARENA"), el("div", { class: "labl-kicker" }, "LOUISIANA BLASTER LEAGUE · GAME DAY TABLET")),
+    plate(el("h3", {}, "First run"), el("h1", {}, "Set up this tablet"),
+      el("label", { class: "labl-lbl" }, "Event name", ev), el("label", { class: "labl-lbl" }, "Season", se),
+      el("label", { class: "labl-lbl" }, "Board Member PIN (4 digits)", p1), el("label", { class: "labl-lbl" }, "PIN again", p2),
+      kp("One PIN opens everything: the Arena, the Mission Tablet setup, and this panel. Change it any time under Settings.", "color:var(--bone-dim)"),
+      okB, out));
+}
+
+/* ---- Board Member panel ---- */
+const LABL_TABS = [["start", "Start"], ["roster", "Roster"], ["teams", "Teams"], ["games", "Mini-games"], ["story", "Story"], ["settings", "Settings"]];
+function lablHome(tab) {
+  if (!lablUnlocked()) {
+    DIR_OK = false;
+    app.append(el("div", { class: "labl-splash" }, epLogo({}), el("h1", { class: "labl-h1" }, "LABL ARENA"), el("div", { class: "labl-kicker" }, "LOUISIANA BLASTER LEAGUE")),
+      plate(el("h3", {}, "Board Member panel"), el("h1", {}, "Enter the PIN"), lablPinBox(() => { DIR_OK = true; DIR_LAST = Date.now(); route(); }, "Open the panel"),
+        el("div", { class: "row", style: "margin-top:10px" }, el("button", { class: "btn", onclick: () => { setMode(LABL_MODE.board); go({ g: "board" }); } }, "🏆 Scoreboard (no PIN)"))));
+    return;
+  }
+  DIR_LAST = Date.now();
+  const msg = el("div", { class: "msg" }), say = (t, bad) => { msg.className = bad ? "msg bad" : "msg"; msg.textContent = "> " + t; };
+  const tabs = el("div", { class: "row labl-tabs" }, ...LABL_TABS.map(([k, l]) => el("button", { class: "btn small" + (k === tab ? " on" : ""), onclick: () => { SFX.click(); go({ g: "home", tab: k }); } }, l)));
+  const lock = el("button", { class: "btn small", onclick: () => { DIR_OK = false; route(); } }, "🔒 Lock");
+  const out = el("div", { class: "colorsafe" }, lablBar("Board Member panel", "home", [lock]), tabs);
+  if (tab === "start") out.append(lablStartTab());
+  else if (tab === "roster") out.append(lablRosterTab(say));
+  else if (tab === "teams") { const P = bbPlayers(), T = bbTeams(), byId = Object.fromEntries(P.map(x => [x.id, x])); out.append(plate(el("h2", {}, "Teams"), bbTeamsBox(T, P, byId, say, () => route()))); }
+  else if (tab === "games") out.append(lablGamesTab(say));
+  else if (tab === "story") out.append(lablStoryTab(say));
+  else out.append(lablSettingsTab(say));
+  out.append(msg);
+  app.append(out);
+  const iv = setInterval(() => { if (!lablUnlocked() && !document.querySelector(".modal")) { DIR_OK = false; route(); } }, 1000);
+  cleanup = () => clearInterval(iv);
+}
+
+function lablStartTab() {
+  const R = bbRoundsAll().filter(r => r.ev === EVENT_SALT), P = bbPlayers();
+  const tile = (icon, title, sub, fn, cls) => el("button", { class: "btn labl-tile " + (cls || ""), onclick: fn }, el("span", { class: "ico" }, icon), el("b", {}, title), el("span", {}, sub));
+  return el("div", {},
+    plate(el("h3", {}, EVENT_SALT + " · " + ERA), el("h1", {}, "Game day"),
+      el("div", { class: "labl-stats" },
+        el("div", {}, el("b", {}, String(P.length)), el("span", {}, "players on the roster")),
+        el("div", {}, el("b", {}, String(R.length)), el("span", {}, "rounds logged today")),
+        el("div", {}, el("b", {}, String(Object.keys(GAMES).length - lablCfg().gamesOff.length)), el("span", {}, "mini-games on"))),
+      el("div", { class: "labl-grid" },
+        tile("🏟", "Open the Arena", "day plan · round clock · log winners", () => { setMode(LABL_MODE.arena); bbRunUnlock(); DIR_OK = false; go({ g: "bbrun" }); }, "go"),
+        tile("▣", "Mission Tablet", "hand the tablet to the players", () => { setMode(LABL_MODE.mtablet); DIR_OK = false; go({}); }),
+        tile("🏆", "Scoreboard", "standings and titles for the TV", () => { setMode(LABL_MODE.board); DIR_OK = false; go({ g: "board" }); }),
+        tile("⬇", "Results CSV", "every round this event", () => lablCsv(false)))),
+    plate(el("h2", {}, "How a day runs"), kp("Play starts at 11:15. Three mode blocks at least, five at most; each is best of three five-minute rounds (first to two). The dart sweep comes after the third block. The Arena's Day plan builds this for you: open it, set the head count, tap Build a full day.", "color:var(--bone-dim)")));
+}
+
+/* roster: ep_cfg.roster = { squad: [{id, n, nw, dead}] } — what bbPlayers() reads */
+function lablRoster() { return (loadCfg() || {}).roster || {}; }
+function lablRosterSave(R) { const v = loadCfg(); v.roster = R; saveCfg(v); }
+function lablRosterTab(say) {
+  const R = lablRoster(), squads = Object.keys(R).sort();
+  const nameIn = el("input", { type: "text", class: "labl-in", placeholder: "Player name", maxlength: "30" });
+  const sqIn = el("input", { type: "text", class: "labl-in", placeholder: "Squad (new or existing)", maxlength: "20", list: "labl-squads" });
+  const dl = el("datalist", { id: "labl-squads" }, ...squads.map(s => el("option", { value: s })));
+  const nw = el("input", { type: "checkbox" });
+  const add = el("button", { class: "btn go", style: "min-height:52px" }, "+ Add player");
+  add.addEventListener("click", () => {
+    const n = nameIn.value.trim(), sq = (sqIn.value.trim() || "Free agents").toUpperCase();
+    if (!n) { say("Type a name.", true); return; }
+    const R2 = lablRoster(); R2[sq] = R2[sq] || [];
+    if (R2[sq].some(m => m.n.toLowerCase() === n.toLowerCase())) { say(n + " is already in " + sq + ".", true); return; }
+    R2[sq].push({ id: "p" + Math.random().toString(36).slice(2, 9), n, nw: nw.checked, dead: false });
+    lablRosterSave(R2); SFX.good(); nameIn.value = ""; route();
+  });
+  nameIn.addEventListener("keydown", e => { if (e.key === "Enter") add.click(); });
+  const lists = squads.map(sq => plate(el("h2", {}, sq + " · " + R[sq].length),
+    el("div", { class: "labl-roster" }, ...R[sq].map(m => el("div", { class: "labl-row" },
+      el("span", {}, m.n + (m.nw ? " · NEW" : "")),
+      el("span", { class: "row", style: "gap:6px" },
+        el("button", { class: "btn small", onclick: () => { const R2 = lablRoster(); const x = R2[sq].find(y => y.id === m.id); if (x) x.nw = !x.nw; lablRosterSave(R2); route(); } }, m.nw ? "Not new" : "Mark new"),
+        el("button", { class: "btn small", onclick: () => { const to = prompt("Move " + m.n + " to which squad?", sq); if (!to || to.toUpperCase() === sq) return; const R2 = lablRoster(); R2[sq] = R2[sq].filter(y => y.id !== m.id); if (!R2[sq].length) delete R2[sq]; (R2[to.toUpperCase()] = R2[to.toUpperCase()] || []).push(m); lablRosterSave(R2); route(); } }, "Move"),
+        el("button", { class: "btn small bad", onclick: () => dirApprove("Roster", "Remove " + m.n + "?", [kp("Their logged rounds stay in the standings.")], "Remove", () => { const R2 = lablRoster(); R2[sq] = R2[sq].filter(y => y.id !== m.id); if (!R2[sq].length) delete R2[sq]; lablRosterSave(R2); route(); }) }, "✕")))))));
+  return el("div", {},
+    plate(el("h2", {}, "Roster"), kp("Players and squads persist across event days. Squads are optional: anyone without one goes in FREE AGENTS. Teams for the day are picked on the Teams tab.", "color:var(--bone-dim)"),
+      el("div", { class: "labl-form" }, nameIn, sqIn, dl, el("label", { class: "labl-chk" }, nw, "First-timer"), add)),
+    ...(lists.length ? lists : [plate(kp("No players yet.", "color:var(--bone-dim)"))]));
+}
+
+/* mini-games: on/off, Hard setting, log */
+function lablGamesTab(say) {
+  const C = lablCfg(), ids = orderedIds();
+  const hard = el("input", { type: "checkbox" }); hard.checked = C.hard;
+  hard.addEventListener("change", () => { lablCfgSet({ hard: hard.checked }); say("Hard setting " + (hard.checked ? "offered" : "hidden") + " on the tablet."); });
+  const rows = ids.map(id => {
+    const G = GAMES[id], on = !C.gamesOff.includes(id);
+    const sw = el("button", { class: "btn small " + (on ? "on" : ""), onclick: () => { const off = new Set(lablCfg().gamesOff); off.has(id) ? off.delete(id) : off.add(id); lablCfgSet({ gamesOff: [...off] }); route(); } }, on ? "ON" : "OFF");
+    const needs = id === "patrol" ? "2 devices" : id === "bunker" ? "4 devices" : id === "defuse" ? "2nd screen (manual)" : G.team ? "2 players, 1 tablet" : "solo";
+    return el("div", { class: "labl-row" + (on ? "" : " off") },
+      el("span", {}, el("b", {}, G.icon + " " + G.title), el("small", {}, " · " + needs)),
+      el("span", { class: "row", style: "gap:6px" }, el("button", { class: "btn small", onclick: () => go({ g: id, d: 1, p: "1" }) }, "Try"), sw));
+  });
+  const L = mtabLogGet().rows.slice().reverse().slice(0, 40);
+  return el("div", {},
+    plate(el("h2", {}, "Mini-games on the Mission Tablet"),
+      kp("Switch any game off for the day. Games that need extra phones or a second screen start OFF. Every game plays at Standard; tick the box to also offer Hard.", "color:var(--bone-dim)"),
+      el("label", { class: "labl-chk" }, hard, "Offer the Hard setting"),
+      el("div", { class: "labl-roster" }, ...rows)),
+    plate(el("h2", {}, "Tablet log · newest first"),
+      el("div", { class: "labl-log" }, ...(L.length ? L.map(r => el("div", { style: "color:" + (r.pr ? "var(--bone-dim)" : r.ok ? "var(--ph)" : "var(--red)") },
+        new Date(r.t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) + " · " + ((GAMES[r.id] || {}).title || r.id) + " · " + (GAMES[r.id] ? setName(GAMES[r.id], r.d) : "") + " · " + (r.pr ? "practice · " : "") + (r.ok ? "WIN " + r.g : "FAIL") + " · " + fmt(r.s || 0))) : [kp("No runs yet.", "color:var(--bone-dim)")])),
+      el("div", { class: "row", style: "gap:6px;margin-top:8px" },
+        el("button", { class: "btn small", onclick: () => { mtabLogClear(); route(); } }, "Clear the log"),
+        el("button", { class: "btn small", onclick: () => { mtabClearLocks(); say("Lockouts cleared."); } }, "Clear lockouts"))));
+}
+
+/* story mission builder */
+function lablStoryTab(say) {
+  const s = lablCfg().story;
+  const st = el("textarea", { class: "labl-in", rows: "2", placeholder: "How it starts — e.g. Orange escorts the VIP from the south barrier at the horn." }, s.start || "");
+  const en = el("textarea", { class: "labl-in", rows: "2", placeholder: "How it ends — e.g. VIP reaches the tablet and a player beats the mini-game; or the clock runs out (Navy wins)." }, s.end || "");
+  const gm = el("select", { class: "labl-in" }, el("option", { value: "" }, "No mini-game at the end"), ...orderedIds().filter(id => !lablCfg().gamesOff.includes(id)).map(id => el("option", { value: id }, GAMES[id].icon + " " + GAMES[id].title)));
+  gm.value = s.game || "";
+  const save = el("button", { class: "btn go", style: "min-height:52px" }, "Save story round");
+  save.addEventListener("click", () => { lablCfgSet({ story: { start: st.value.trim().slice(0, 300), end: en.value.trim().slice(0, 300), game: gm.value } }); lablStoryApply(); SFX.good(); say("Saved. Add a “Story Mission” block to the Day plan; its rules card reads this out."); });
+  return plate(el("h2", {}, "Story round"),
+    kp("A story round is a normal five-minute round with a set beginning and end: an escort, an object to move, a thing to hold. Write both here, pick the mini-game that ends it (if one does), then add a “Story Mission” block in the Arena's Day plan. The run screen's rules card shows this text.", "color:var(--bone-dim)"),
+    el("label", { class: "labl-lbl" }, "Start", st), el("label", { class: "labl-lbl" }, "End condition", en), el("label", { class: "labl-lbl" }, "Mini-game at the end", gm), save);
+}
+
+/* settings: event/season, PIN, modes, backup, CSV */
+function lablSettingsTab(say) {
+  const v = loadCfg();
+  const ev = el("input", { type: "text", class: "labl-in", value: EVENT_SALT, maxlength: "40" });
+  const se = el("input", { type: "text", class: "labl-in", value: ERA, maxlength: "30" });
+  const saveNames = el("button", { class: "btn go" }, "Save");
+  saveNames.addEventListener("click", () => { const c = loadCfg(); c.salt = ev.value.trim() || "LABL"; c.era = se.value.trim() || "Season 1"; saveCfg(c); SFX.good(); say("Event and season saved."); });
+  const newEv = el("button", { class: "btn" }, "Start a new event day");
+  newEv.addEventListener("click", () => dirApprove("Settings", "New event day?", [kp("Today's rounds stay in the season standings. The day plan and run state reset; the roster and teams stay.")], "New day", () => {
+    const c = loadCfg(); c.salt = "LABL " + new Date().toLocaleDateString("en-CA"); saveCfg(c);
+    ["ep_bbrun", "ep_bbplan", "ep_bbpending", "ep_bbtermlive"].forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
+    SFX.good(); route();
+  }));
+  const p1 = dirPinInput("NEW PIN"), p2 = dirPinInput("AGAIN"), pinB = el("button", { class: "btn go" }, "Change PIN");
+  pinB.addEventListener("click", () => { if (!/^\d{4}$/.test(p1.value) || p1.value !== p2.value) { say("Type the same 4-digit PIN twice.", true); return; } const c = loadCfg(); c.dirPin = p1.value; c.offPins = Object.assign({}, c.offPins || {}, { arena: p1.value }); saveCfg(c); p1.value = p2.value = ""; SFX.good(); say("PIN changed."); });
+  // modes on/off
+  const off = new Set(lablCfg().modesOff);
+  const modeRows = BB_MODES.map(m => { const cb = el("input", { type: "checkbox" }); cb.checked = !off.has(m); cb.addEventListener("change", () => { const o = new Set(lablCfg().modesOff); cb.checked ? o.delete(m) : o.add(m); lablCfgSet({ modesOff: [...o] }); }); return el("label", { class: "labl-chk" }, cb, m + (BB_ZOMBIE_MODES.includes(m) ? " · zombie" : "")); });
+  // backup / restore
+  const bk = el("button", { class: "btn go" }, "⬇ Backup (JSON)");
+  bk.addEventListener("click", () => { const o = {}; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith("ep_")) o[k] = localStorage.getItem(k); } lablDownload("labl-backup-" + new Date().toISOString().slice(0, 10) + ".json", JSON.stringify({ labl: LABL.version, at: Date.now(), data: o }, null, 1), "application/json"); say("Backup saved to the tablet's downloads. Copy it somewhere safe."); });
+  const file = el("input", { type: "file", accept: "application/json,.json", style: "display:none" });
+  file.addEventListener("change", () => { const f = file.files[0]; if (!f) return; const rd = new FileReader(); rd.onload = () => { try { const j = JSON.parse(rd.result); if (!j || !j.data) throw 0; dirApprove("Settings", "Restore this backup?", [kp("Everything on this tablet is replaced by the backup from " + new Date(j.at).toLocaleString() + ".")], "Restore", () => { Object.entries(j.data).forEach(([k, val]) => localStorage.setItem(k, val)); location.reload(); }); } catch (e) { say("That file isn't a LABL backup.", true); } }; rd.readAsText(f); });
+  const rs = el("button", { class: "btn", onclick: () => file.click() }, "⬆ Restore a backup");
+  return el("div", {},
+    plate(el("h2", {}, "Event & season"), el("label", { class: "labl-lbl" }, "Event name", ev), el("label", { class: "labl-lbl" }, "Season", se), el("div", { class: "row", style: "gap:8px" }, saveNames, newEv)),
+    plate(el("h2", {}, "Results"), kp("A CSV of every round, one row per round, with the per-player tags and outs when they were logged.", "color:var(--bone-dim)"),
+      el("div", { class: "row", style: "gap:8px" }, el("button", { class: "btn go", onclick: () => lablCsv(false) }, "⬇ This event"), el("button", { class: "btn", onclick: () => lablCsv(true) }, "⬇ Whole season"))),
+    plate(el("h2", {}, "Backup"), kp("Everything lives in this browser. A cleared browser loses the season, so back up after every event day.", "color:var(--amber)"), el("div", { class: "row", style: "gap:8px" }, bk, rs, file)),
+    plate(el("h2", {}, "Board Member PIN"), el("div", { class: "row", style: "gap:8px" }, p1, p2, pinB)),
+    plate(el("h2", {}, "Game modes offered"), kp("Untick a mode to hide it from the Day plan and the round log.", "color:var(--bone-dim)"), el("div", { class: "labl-modes" }, ...modeRows)),
+    plate(el("h2", {}, "Screen & sound"), screenSoundFold()));
+}
+
+function lablDownload(name, text, type) {
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text], { type: type || "text/plain" })); a.download = name; document.body.append(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+function lablCsv(season) {
+  const R = bbRoundsAll().filter(r => (season ? r.era === ERA : r.ev === EVENT_SALT));
+  const q = s => '"' + String(s == null ? "" : s).replace(/"/g, '""') + '"';
+  const head = ["season", "event", "date", "time", "block", "round", "mode", "format", "side_a", "side_b", "winner", "objectives", "mvp", "disputed", "player_stats", "round_id"];
+  let blk = 0, lastMode = null, rn = 0;
+  const rows = R.map(r => {
+    if (r.mode !== lastMode) { blk++; rn = 0; lastMode = r.mode; } rn++;
+    const names = id => (r.nm && r.nm[id]) || id;
+    const sides = (r.teams || []).map(t => t.n + " [" + (t.m || []).map(names).join("; ") + "]");
+    const win = r.win === -1 ? "Draw" : typeof r.win === "number" ? ((r.teams || [])[r.win] || {}).n || r.win : names(r.win);
+    const stats = Object.entries(r.st || {}).map(([id, s]) => names(id) + ":" + (s[0] || 0) + "t/" + (s[1] || 0) + "o").join(" ");
+    const d = new Date(r.t);
+    return [r.era, r.ev, d.toLocaleDateString("en-CA"), d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }), blk, rn, r.mode, r.fmt, sides[0] || "", sides[1] || "", win, (r.obj || []).join(" / "), (r.mvp || []).map(names).join("; "), r.dsp ? 1 : 0, stats, r.id].map(q).join(",");
+  });
+  lablDownload((season ? "labl-season-" + ERA : "labl-" + EVENT_SALT).replace(/[^a-z0-9-]+/gi, "_") + ".csv", [head.join(","), ...rows].join("\r\n"), "text/csv");
+}
+
+/* ---- Scoreboard (player-facing, mode "8") ---- */
+function lablBoard() {
+  app.append(lablBar("Scoreboard", "board"));
+  app.append(lablPointsPlate());
+  kBB();
+  const iv = setInterval(() => { if (!document.querySelector(".modal")) route(); }, 60000);
+  cleanup = () => clearInterval(iv);
+}
+
+/* ---- Mission Tablet: tiles without classes, with the on/off list and the Hard setting ---- */
+mtabStations = function () { const off = lablCfg().gamesOff, st = mtabCfg().st; return orderedIds().filter(id => !off.includes(id) && (!st.length || st.includes(id))); };
+mtabTile = function (id, practice) {
+  const G = GAMES[id], C = lablCfg();
+  const sets = G.open || !C.hard ? [1] : [1, 2];
+  const needs = (G.team ? "2 PLAYERS" : G.squad ? "SQUAD OF " + G.squad : "SOLO") + (practice ? " · PRACTICE" : "");
+  return plate(el("div", { class: "game mtab-tile" },
+    el("div", { class: "ico", "aria-hidden": "true" }, G.icon), el("h2", {}, G.title), el("div", { class: "meta" }, needs),
+    el("div", { class: "row mtab-sets" }, ...sets.map(d => el("button", { class: "btn" + (d === 2 ? " untr" : " go"), style: "flex:1;min-height:58px;font-size:calc(22px*var(--tx))", onclick: () => { SFX.click(); go(Object.assign({ g: id, d }, practice ? { p: "1" } : {})); } }, sets.length === 1 ? (practice ? "Practice" : "Play") : d === 1 ? "Standard" : "Hard")))));
+};
+const EP_mtabPage = mtabPage;
+mtabPage = function (practice) {
+  const C = mtabCfg(), ids = mtabStations();
+  const gear = el("button", { class: "btn small", style: "font-size:calc(13px*var(--tx));min-height:34px" }, "⚙ Setup & log");
+  gear.addEventListener("click", () => dirApprove("Mission Tablet", "Setup", [kp("Pick today's stations, see the log, clear lockouts.")], "Open", () => mtabSetup()));
+  app.append(lablBar(practice ? "Mission Tablet · practice" : "Mission Tablet", "mtablet", [gear]));
+  app.append(plate(el("h1", {}, practice ? "🎯 Practice" : C.name || "Pick a station"),
+    el("p", { class: "help" }, practice ? "Nothing here counts: no lockout, no penalty." : "Tap a station and play. A fail locks that station on this tablet for a little while; wins and fails are logged for the Board Members.")));
+  app.append(el("div", { class: "labl-tiles" }, ...ids.map(id => mtabTile(id, practice))));
+  const second = ids.filter(id => MTAB_SECOND[id]);
+  if (!practice && second.length) app.append(plate(el("h3", {}, "Two screens"), el("p", { class: "help" }, "These stations need a second screen on another device."), ...second.map(id => el("button", { class: "btn", style: "width:100%;min-height:52px;margin:4px 0", onclick: () => go({ g: MTAB_SECOND[id][0] }) }, MTAB_SECOND[id][1]))));
+  if (practice) app.append(el("div", { class: "row" }, el("button", { class: "btn small", onclick: () => go({}) }, "◂ Stations")));
+  else if (C.pr) app.append(el("div", { class: "row" }, el("button", { class: "btn", style: "min-height:52px", onclick: () => go({ g: "practice" }) }, "🎯 Practice (nothing counts)")));
+};
+</script>

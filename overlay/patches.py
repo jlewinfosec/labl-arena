@@ -1,0 +1,131 @@
+# Exact-substring source patches applied by build.py (each must match exactly once).
+PATCHES = [
+  # --- no classes in LABL: Standard / Hard only
+  ('const setName = (G, d) => (G.open ? "Any class" : d === 1 ? G.cls + " only" : "Not my class");',
+   'const setName = (G, d) => (d === 1 ? "Standard" : "Hard");'),
+  ('''(untrained
+? practice
+? "NOT MY CLASS · NO COST IN PRACTICE"
+: "NOT MY CLASS · FAILING COSTS MORE"
+: G.open
+? "ANY CLASS"
+: G.cls.toUpperCase() + " ONLY") +''',
+   '(untrained ? "HARD MODE" : "STANDARD") +'),
+  ('G.open ? ["ANY CLASS", "cls"] : d === 1 ? [String(G.cls || "Class").toUpperCase(), "cls"] : ["UNTRAINED", "unt"],',
+   'd === 1 ? ["STANDARD", "cls"] : ["HARD", "unt"],'),
+  ('"JAMMED: Not-my-class runs are blocked until a " + G.cls + " wins here. A " + G.cls + " from any squad can fix it, or refuse to."',
+   '"JAMMED: Hard runs are blocked until a Standard run wins here."'),
+  # --- no automatic night rules / red palette flip at sunset
+  ('let NIGHT_ON = true;', 'let NIGHT_ON = false;'),
+  # --- team colours: LABL sides
+  ('const BB_COL = { red: "#ff4a3d", blue: "#3da5ff", gold: "#ffd36a", green: "#62e07a" };',
+   'const BB_COL = { orange: "#f07820", navy: "#4f8bff", red: "#ff4a3d", blue: "#3da5ff", gold: "#ffd36a", green: "#62e07a" };'),
+  ('return jget("ep_bbteams", null) || { fmt: "rb", a: { n: "RED", col: "red", m: [] }, b: { n: "BLUE", col: "blue", m: [] }, sa: [], sb: [] };',
+   'return jget("ep_bbteams", null) || { fmt: "rb", a: { n: "ORANGE CRUSH", col: "orange", m: [] }, b: { n: "NAVY TIDE", col: "navy", m: [] }, sa: [], sb: [] };'),
+  # --- day plan defaults: 11:15 start, 5 modes max, briefing only (no lunch/dinner anchors)
+  ('''start: "09:00",
+end: "21:00",
+len: 300, // seconds per round''',
+   '''start: "11:15",
+end: "17:00",
+len: 300, // seconds per round'''),
+  ('maxModes: 9, // D-261: modes in a full day at most (3 sets of 3)', 'maxModes: 5, // LABL: 3 to 5 modes a day'),
+  ('''heat: "auto", // D-337: the 1–4 p.m. heat block, by the weather ("on" / "off" force it)
+// [ARENA · Oct 12]
+heads: 0,''', '''heat: "off", // LABL: no weather heat block
+// [ARENA · Oct 12]
+heads: 0,'''),
+  ('lights: false, // battery LED work lights on hand (INFRA-403)', 'lights: true, // LABL: the day ends with the last mode, not at sunset'),
+  ('''items: [
+{ id: bbId(), k: "brk", kind: "brief", min: first ? BB_DAY.briefFirst : BB_DAY.brief, at: "09:00" },
+// D-261: no fixed 1:00 sweep on an arena day; the builder sweeps after every set of 3 modes instead
+{ id: bbId(), k: "brk", kind: "lunch", min: 60, at: "13:20" },
+{ id: bbId(), k: "brk", kind: "dinner", min: BB_DAY.dinner, at: "17:30" }
+]''', '''items: [
+{ id: bbId(), k: "brk", kind: "brief", min: first ? BB_DAY.briefFirst : BB_DAY.brief, at: "11:15" }
+]'''),
+  ('if (p.maxModes == null) p.maxModes = 9;', 'if (p.maxModes == null) p.maxModes = 5;'),
+]
+# applied to every occurrence
+PATCHES_ALL = [
+  ('if (rule.jam) t += " It also jams until a " + G.cls + " fixes it.";',
+   'if (rule.jam) t += " It also jams until a Standard run wins here.";'),
+]
+PATCHES += [
+  ('NIGHT_ON = v.nightSun == null ? true : !!v.nightSun;', 'NIGHT_ON = v.nightSun == null ? false : !!v.nightSun;'),
+  ('ERA = v.era || "Beta";', 'ERA = v.era || "Season 1";'),
+  ('let EVENT_SALT = "EP-BETA";', 'let EVENT_SALT = "LABL";'),
+  ('era: "Beta",\ndirPin: DIRECTOR_PIN_DEFAULT', 'era: "Season 1",\ndirPin: DIRECTOR_PIN_DEFAULT'),
+]
+PATCHES_ALL += [
+  ('BB_MODES.filter(', 'lablModes().filter('),
+]
+
+PATCHES += [('"BLOOD GHOUL RUSTY FLESH SKULL BONES TEETH WOUND KNIFE SCRAP TORCH FERAL TOXIN SPORE CRYPT GRAVE STEEL VALVE RADIO POWER CHAIN BLADE SIREN NERVE VENOM PANIC SMOKE ASHES CRAWL STORM FUNGI SWAMP BURNT DEBRIS CORPSE BUNKER RATION SIGNAL CARBON RUBBLE PLAGUE FUNGUS MUTANT HUNGER MARROW SCREAM BLEACH MORGUE RAIDER WASTES RUSTED HAZARD TOXINS CINDER GUTTER SPINES LOCKED SHROUD SPLINT FEVERS VERMIN ROTTEN STATIC TOWERS VACCINE TETANUS BATTERY SURVIVE CARCASS WARHEAD BUNKERS ANTENNA SHAMBLE REACTOR OUTPOST HORRORS MUTANTS CHARGER SPRINTS CLINGER BLOATER SILENCE LOCKBOX FALLOUT DESPAIR FEVERED BLISTER WASTING ROTTING GASMASK CORRODE SCREAMS SHELTER DRIFTER HUNTERS".split(', '"BLAST DARTS FOAMS ARENA SCORE ROUND MATCH SQUAD TEAMS CREWS CROWN FLAGS RELAY SPAWN GUARD CLIPS SHOTS SPEED CHASE FIELD BAYOU GATOR SWAMP CRAWL CLAWS PINCH SHELL PATCH BUNKER TARGET VOLLEY SPRINT TACKLE ATTACK DEFEND BARREL RELOAD HOPPER BREACH BANNER MEDALS SEASON PLAYER SNIPER FLANKS ESCORT PYLONS LEAGUE BLASTS DODGED RUNNER RESPAWN CAPTURE TRIGGER BLASTER PAYLOAD RECOVER ARMORED BARRIER CHARGER FLAGGED OUTPOST COMMAND DEFENSE OFFENSE RALLIED SCORING RUNNERS DARTING SWEEPER VICTORY CRAWDAD MARSHES PELICAN SHRIMPS BOUDINS".split(')]
+PATCHES += [
+  ('"Safety first: arm straight up = out of character, the Director\'s whistle stops everything, goggles on in the arena. Then teams and today\'s first modes."',
+   '"Safety first: blaster held overhead = out of play, a Board Member\'s call stops everything, eye protection on in the arena. Honor your hits. Then teams and today\'s first modes."'),
+  ('pav120: ["Pavilion 120 × 50", "Dry days: the roof covers the middle 90 × 40; tape the ends and sides."]',
+   'pav120: ["Field 100 × 50", "The full arena: pop-up barriers set, spawns at both ends."]'),
+  ('pav90: ["Pavilion 90 × 40", "Under the roof: 16 players or fewer, or rain."]',
+   'pav90: ["Short field 70 × 50", "Pull the end barriers in: 16 players or fewer."]'),
+  ('oak: ["The oak", "When the pavilion is in use for something else."]',
+   'oak: ["Half field 50 × 50", "Half the arena: small groups, pistol rounds, story beats."]'),
+  ('large: ["Large field (two oaks)", "The large-field battle: Boilerdome between the two live oaks."]',
+   'large: ["Open field", "Beyond the barriers: the large-field battle (Boilerdome)."]'),
+  ('title: "Bleed the coolant line"', 'title: "Prime the air line"'),
+  ('title: "Crack the terminal"', 'title: "Crack the password"'),
+  ('title: "Close the wound"', 'title: "Patch the vest"'),
+  ('icon: "☣"', 'icon: "⌨"'),
+  ('title: "Break the seal"', 'title: "Punch the gate code"'),
+  ('title: "Synthesize"', 'title: "Mix the dye pack"'),
+]
+PATCHES += [
+  ('''return el(
+"div",
+{ class: "bbp-grp" },
+el("div", { class: "bbp-lab" }, "Heat block"),''', '''return el(
+"div",
+{ class: "bbp-grp labl-hide" },
+el("div", { class: "bbp-lab" }, "Heat block"),'''),
+  ('"Keeps briefing, lunch and dinner; fills up to "', '"Keeps the briefing; fills up to "'),
+]
+PATCHES_ALL += [
+  ('Every block in the plan is done. Sync the rounds (Wi-Fi at Scav Base, or the round codes), then award the event\'s Survivor Point from a Scav Base PC: Arena › Standings.', 'Every block in the plan is done. Check the Rounds tab, then award the event\'s League Point under Standings. Back up the tablet tonight (Board Member panel › Settings).'),
+]
+PATCHES += [
+  ('isKiosk = typeof KO !== "undefined" && Object.keys(KO.su().squads).length;', 'isKiosk = true; // LABL: this tablet is the league record'),
+  ('''const L = KO.sp();
+tied.forEach(name => {
+const q = KO.su().squads[name];
+if (!q) return;
+q.members.forEach(m => {
+const c = KO.char(m.cid);
+if (c && !c.dead) L.push({ id: uid(), t: Date.now(), cid: c.id, n: 1, why: "Bullet Ballet top squad", src: "bb", ev: EVENT_SALT });
+});
+});
+picks.forEach(cid => {
+const c = KO.char(cid);
+if (c && !c.dead) L.push({ id: uid(), t: Date.now(), cid: c.id, n: 1, why: "Bullet Ballet battle MVP", src: "bb", ev: EVENT_SALT });
+});
+KO.saveSp(L);
+const B2 = BBS.get();
+B2.award[EVENT_SALT] = { sq: tied.join(" + ") || "—", sqs: tied.slice(), mvps: picks.slice(), t: Date.now() };''',
+   '''const B2 = BBS.get();
+B2.award[EVENT_SALT] = { sq: tied.join(" + ") || "—", sqs: tied.slice(), mvps: picks.slice(), mvpNames: pickNames.slice(), t: Date.now(), era: ERA };'''),
+]
+PATCHES_ALL += [
+]
+PATCHES += [
+  # LABL has no economy: a fail costs the lockout only
+  ('''function consBox(id, d, o) {
+if (!(CONS[id] || {})[d]) return null;''', '''function consBox(id, d, o) {
+return null; // LABL: no Hits, materials or infection; the lockout is the cost
+if (!(CONS[id] || {})[d]) return null;'''),
+]
+PATCHES += [
+  ('''function officerBox(id, d, won, note, o) {
+if (o.practice) return null;''', '''function officerBox(id, d, won, note, o) {
+return null; // LABL: no officer abilities
+if (o.practice) return null;'''),
+]

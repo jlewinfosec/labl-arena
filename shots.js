@@ -1,0 +1,18 @@
+const { chromium } = require('playwright');const path=require('path');
+(async()=>{const b=await chromium.launch();const p=await b.newPage({viewport:{width:1024,height:768}});
+const errs=[];p.on('pageerror',e=>errs.push('PAGEERROR '+e.stack.split('\n').slice(0,3).join(' <- ')));
+const file='file://'+path.resolve('LABL_Arena.html');
+const btn=async(t)=>{await p.evaluate(t=>{const b=[...document.querySelectorAll('button')].find(x=>x.textContent.trim().toLowerCase().includes(t.toLowerCase())); if(b) b.click();},t); await p.waitForTimeout(500);};
+const shot=async(n,full)=>{await p.waitForTimeout(500); await p.screenshot({path:'shots/'+n+'.png',fullPage:!!full}); if(errs.length){console.log(n,errs.join('\n'));errs.length=0;}};
+await p.goto(file,{waitUntil:'load'}); await p.fill('input[placeholder="NEW PIN"]','1234'); await p.fill('input[placeholder="AGAIN"]','1234'); await btn('Set up this tablet');
+await p.evaluate(()=>switchModal('home')); await shot('switch');
+await p.evaluate(()=>{document.querySelector('.modal')?.remove(); go({g:'home',tab:'games'})}); await shot('games',true);
+await p.evaluate(()=>go({g:'home',tab:'settings'})); await shot('settings',true);
+await p.evaluate(()=>go({g:'home',tab:'story'})); await shot('story',true);
+await p.evaluate(()=>{setMode('7'); go({g:'lock',d:1})}); await shot('intro_lock',true);
+await btn('Start'); await p.waitForTimeout(1500); await shot('play_lock');
+await p.evaluate(()=>{go({g:'wire',d:2})}); await btn('Start'); await p.waitForTimeout(1500); await shot('play_wire');
+await p.evaluate(()=>{setMode('6'); bbRunUnlock(); go({g:'bbterm',m:'koth',from:'terms'})}); await shot('term_koth',true);
+await p.evaluate(()=>{go({g:'bbrun'})}); await p.evaluate(()=>{BBR_OK=0; route();}); await shot('arena_locked');
+await p.evaluate(()=>{setMode('8'); go({g:'board'})}); await shot('board',true);
+await b.close();})();
