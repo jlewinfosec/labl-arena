@@ -24,7 +24,8 @@ function lablCfg() {
     gamesOff: Array.isArray(c.gamesOff) ? c.gamesOff : ["patrol", "bunker", "defuse"],
     hard: c.hard !== false,            // offer the Hard setting on the Mission Tablet
     story: c.story || { start: "", end: "", game: "" },
-    setup: !!c.setup                   // first-run done
+    setup: !!c.setup,                  // first-run done
+    persist: c.persist || ""           // navigator.storage.persist() result: yes / no / na
   };
 }
 function lablCfgSet(patch) {
@@ -46,7 +47,8 @@ function lablStoryApply() {
 }
 lablStoryApply();
 
-/* ---- no LAN hub in LABL: the sync strip is gone ---- */
+/* ---- no LAN hub in LABL: the sync strip is gone, and the hub poll never fires (EP treated the page's own http origin as a hub) ---- */
+hubBase = () => "";
 bbSyncStrip = () => el("span", { class: "bb-sync-off" });
 bbUnsynced = () => [];
 /* League Points: one per event to the top qualified squad (and large-field MVPs), kept in ep_bb.award */
@@ -152,6 +154,46 @@ routeTo = function () {
   return lablHome(q.get("tab") || "start");
 };
 
+/* ---- installed app (Phase 0): service worker next to the page, update banner on the panel only, persistent storage ---- */
+pwaRegister = function () {
+  if (!("serviceWorker" in navigator) || !/^https?:$/.test(location.protocol)) return;
+  navigator.serviceWorker.register("./sw.js").then(reg => {
+    PWA.reg = reg;
+    if (reg.waiting) pwaUpdateReady(reg.waiting);
+    reg.addEventListener("updatefound", () => {
+      const w = reg.installing; if (!w) return;
+      w.addEventListener("statechange", () => { if (w.state === "installed" && navigator.serviceWorker.controller) pwaUpdateReady(w); });
+    });
+  }).catch(e => errLog(e, "sw.register"));
+  // reload only when a NEW worker takes over an already-controlled page (an update); the first install claims the page silently
+  let reloading = false; const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener("controllerchange", () => { if (reloading || !hadController) return; reloading = true; location.reload(); });
+};
+pwaUpdateReady = function (worker) {
+  PWA.waiting = worker;
+  // the banner lives on the Board Member panel only; never on the run screen or the Mission Tablet
+  if (lablModeKey() === "home" && !document.querySelector(".modal") && !document.getElementById("labl-update")) route();
+};
+function lablUpdateBanner() {
+  const b = el("button", { id: "labl-update", class: "labl-update" }, el("b", {}, "New version ready."), " Restart to update.");
+  b.addEventListener("click", () => {
+    b.textContent = "Restarting…";
+    try { PWA.waiting.postMessage({ type: "skipWaiting" }); } catch (e) { location.reload(); }
+    setTimeout(() => location.reload(), 2500);   // the controllerchange reload normally gets there first
+  });
+  return b;
+}
+async function lablPersist() {
+  if (!navigator.storage || !navigator.storage.persist) { if (!lablCfg().persist) lablCfgSet({ persist: "na" }); return; }
+  try {
+    const had = navigator.storage.persisted ? await navigator.storage.persisted() : false;
+    const ok = had || await navigator.storage.persist();
+    const was = lablCfg().persist, now = ok ? "yes" : "no";
+    if (was !== now) { lablCfgSet({ persist: now }); if (lablModeKey() === "home" && NAV.get("tab") === "settings") route(); }
+  } catch (e) { if (!lablCfg().persist) lablCfgSet({ persist: "na" }); }
+}
+window.addEventListener("load", () => { if (lablCfg().setup) lablPersist(); });
+
 /* ---- first run ---- */
 function lablFirstRun() {
   const ev = el("input", { type: "text", class: "labl-in", value: "LABL " + new Date().toLocaleDateString("en-CA"), maxlength: "40" });
@@ -164,7 +206,7 @@ function lablFirstRun() {
     v.salt = ev.value.trim() || "LABL"; v.era = se.value.trim() || "Season 1";
     v.labl = Object.assign({}, v.labl || {}, { setup: true });
     v.bb = Object.assign({ min: 3, share: 0.5, charMin: 3, eraMin: 10, idleMin: 10 }, v.bb || {});
-    saveCfg(v); DIR_OK = true; DIR_LAST = Date.now(); SFX.good(); go({ g: "home" });
+    saveCfg(v); DIR_OK = true; DIR_LAST = Date.now(); SFX.good(); lablPersist(); go({ g: "home" });
   });
   app.append(el("div", { class: "labl-splash" }, epLogo({}), el("h1", { class: "labl-h1" }, "LABL ARENA"), el("div", { class: "labl-kicker" }, "LOUISIANA BLASTER LEAGUE · GAME DAY TABLET")),
     plate(el("h3", {}, "First run"), el("h1", {}, "Set up this tablet"),
@@ -196,6 +238,8 @@ function lablHome(tab) {
   else if (tab === "story") out.append(lablStoryTab(say));
   else out.append(lablSettingsTab(say));
   out.append(msg);
+  out.append(el("div", { class: "labl-foot" }, "LABL Arena " + LABL.version));
+  if (PWA.waiting) out.insertBefore(lablUpdateBanner(), tabs);
   app.append(out);
   const iv = setInterval(() => { if (!lablUnlocked() && !document.querySelector(".modal")) { DIR_OK = false; route(); } }, 1000);
   cleanup = () => clearInterval(iv);
@@ -311,7 +355,9 @@ function lablSettingsTab(say) {
   const modeRows = BB_MODES.map(m => { const cb = el("input", { type: "checkbox" }); cb.checked = !off.has(m); cb.addEventListener("change", () => { const o = new Set(lablCfg().modesOff); cb.checked ? o.delete(m) : o.add(m); lablCfgSet({ modesOff: [...o] }); }); return el("label", { class: "labl-chk" }, cb, m + (BB_ZOMBIE_MODES.includes(m) ? " · zombie" : "")); });
   // backup / restore
   const bk = el("button", { class: "btn go" }, "⬇ Backup (JSON)");
-  bk.addEventListener("click", () => { const o = {}; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith("ep_")) o[k] = localStorage.getItem(k); } lablDownload("labl-backup-" + new Date().toISOString().slice(0, 10) + ".json", JSON.stringify({ labl: LABL.version, at: Date.now(), data: o }, null, 1), "application/json"); say("Backup saved to the tablet's downloads. Copy it somewhere safe."); });
+  bk.addEventListener("click", () => { const f = lablBackupFile(); lablDownload(f.name, f.text, f.type); say("Backup saved to the tablet's downloads. Copy it somewhere safe."); });
+  const drive = lablDriveButton("☁ Send to Google Drive", say);
+  const persistTxt = { yes: "✔ Protected: the browser won't clear this app's data to free space.", no: "✖ Not protected: the browser may clear this data when the tablet runs low on space. Installing the app to the home screen usually fixes this.", na: "– This browser can't promise persistent storage." }[lablCfg().persist || "na"];
   const file = el("input", { type: "file", accept: "application/json,.json", style: "display:none" });
   file.addEventListener("change", () => { const f = file.files[0]; if (!f) return; const rd = new FileReader(); rd.onload = () => { try { const j = JSON.parse(rd.result); if (!j || !j.data) throw 0; dirApprove("Settings", "Restore this backup?", [kp("Everything on this tablet is replaced by the backup from " + new Date(j.at).toLocaleString() + ".")], "Restore", () => { Object.entries(j.data).forEach(([k, val]) => localStorage.setItem(k, val)); location.reload(); }); } catch (e) { say("That file isn't a LABL backup.", true); } }; rd.readAsText(f); });
   const rs = el("button", { class: "btn", onclick: () => file.click() }, "⬆ Restore a backup");
@@ -319,7 +365,10 @@ function lablSettingsTab(say) {
     plate(el("h2", {}, "Event & season"), el("label", { class: "labl-lbl" }, "Event name", ev), el("label", { class: "labl-lbl" }, "Season", se), el("div", { class: "row", style: "gap:8px" }, saveNames, newEv)),
     plate(el("h2", {}, "Results"), kp("A CSV of every round, one row per round, with the per-player tags and outs when they were logged.", "color:var(--bone-dim)"),
       el("div", { class: "row", style: "gap:8px" }, el("button", { class: "btn go", onclick: () => lablCsv(false) }, "⬇ This event"), el("button", { class: "btn", onclick: () => lablCsv(true) }, "⬇ Whole season"))),
-    plate(el("h2", {}, "Backup"), kp("Everything lives in this browser. A cleared browser loses the season, so back up after every event day.", "color:var(--amber)"), el("div", { class: "row", style: "gap:8px" }, bk, rs, file)),
+    plate(el("h2", {}, "Backup"), kp("Everything lives in this browser. A cleared browser loses the season, so back up after every event day. Send to Google Drive shares the backup and this event's CSV together through the Android share sheet.", "color:var(--amber)"),
+      el("div", { class: "row", style: "gap:8px;flex-wrap:wrap" }, drive, bk, rs, file),
+      kp("Storage: " + persistTxt, "color:var(--bone-dim);margin-top:8px"),
+      kp("LABL Arena version " + LABL.version + (location.protocol === "file:" ? " · opened as a file (not installed)" : PWA.reg ? " · installed app, works offline" : ""), "color:var(--bone-dim)")),
     plate(el("h2", {}, "Board Member PIN"), el("div", { class: "row", style: "gap:8px" }, p1, p2, pinB)),
     plate(el("h2", {}, "Game modes offered"), kp("Untick a mode to hide it from the Day plan and the round log.", "color:var(--bone-dim)"), el("div", { class: "labl-modes" }, ...modeRows)),
     plate(el("h2", {}, "Screen & sound"), screenSoundFold()));
@@ -328,7 +377,34 @@ function lablSettingsTab(say) {
 function lablDownload(name, text, type) {
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text], { type: type || "text/plain" })); a.download = name; document.body.append(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
 }
-function lablCsv(season) {
+/* ---- backup + share (Phase 0) ---- */
+function lablBackupFile() {
+  const o = {}; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith("ep_")) o[k] = localStorage.getItem(k); }
+  return { name: "labl-backup-" + new Date().toISOString().slice(0, 10) + ".json", text: JSON.stringify({ labl: LABL.version, at: Date.now(), data: o }, null, 1), type: "application/json" };
+}
+const lablCanShareFiles = () => { try { return !!(navigator.share && navigator.canShare && navigator.canShare({ files: [new File(["x"], "x.txt", { type: "text/plain" })] })); } catch (e) { return false; } };
+/* Share files through the Android share sheet (pick Google Drive there); downloads when sharing isn't available. */
+async function lablShareFiles(files, title) {
+  if (lablCanShareFiles()) {
+    try {
+      await navigator.share({ title: title || "LABL Arena", files: files.map(f => new File([f.text], f.name, { type: f.type })) });
+      return "shared";
+    } catch (e) { if (e && e.name === "AbortError") return "cancelled"; }
+  }
+  files.forEach((f, i) => setTimeout(() => lablDownload(f.name, f.text, f.type), i * 400));
+  return "downloaded";
+}
+function lablDriveButton(label, say) {
+  const b = el("button", { class: "btn go", style: "min-height:52px" }, label || "☁ Send to Google Drive");
+  b.addEventListener("click", async () => {
+    const r = await lablShareFiles([lablBackupFile(), lablCsvFile(false)], "LABL Arena backup · " + EVENT_SALT);
+    const t = r === "shared" ? "Sent. Pick Google Drive in the share sheet if you haven't yet." : r === "cancelled" ? "Share cancelled." : "Sharing isn't available here, so the backup and CSV went to the tablet's downloads.";
+    if (say) say(t, r === "cancelled"); else if (typeof toast === "function") toast(t);
+  });
+  return b;
+}
+function lablCsv(season) { const f = lablCsvFile(season); lablDownload(f.name, f.text, f.type); }
+function lablCsvFile(season) {
   const R = bbRoundsAll().filter(r => (season ? r.era === ERA : r.ev === EVENT_SALT));
   const q = s => '"' + String(s == null ? "" : s).replace(/"/g, '""') + '"';
   const head = ["season", "event", "date", "time", "block", "round", "mode", "format", "side_a", "side_b", "winner", "objectives", "mvp", "disputed", "player_stats", "round_id"];
@@ -342,7 +418,7 @@ function lablCsv(season) {
     const d = new Date(r.t);
     return [r.era, r.ev, d.toLocaleDateString("en-CA"), d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }), blk, rn, r.mode, r.fmt, sides[0] || "", sides[1] || "", win, (r.obj || []).join(" / "), (r.mvp || []).map(names).join("; "), r.dsp ? 1 : 0, stats, r.id].map(q).join(",");
   });
-  lablDownload((season ? "labl-season-" + ERA : "labl-" + EVENT_SALT).replace(/[^a-z0-9-]+/gi, "_") + ".csv", [head.join(","), ...rows].join("\r\n"), "text/csv");
+  return { name: (season ? "labl-season-" + ERA : "labl-" + EVENT_SALT).replace(/[^a-z0-9-]+/gi, "_") + ".csv", text: [head.join(","), ...rows].join("\r\n"), type: "text/csv" };
 }
 
 /* ---- Scoreboard (player-facing, mode "8") ---- */

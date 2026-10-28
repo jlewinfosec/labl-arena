@@ -74,3 +74,11 @@ import subprocess
 subprocess.run(['node', str(HERE/'overlay'/'terms.js'), str(tmp), str(HERE/'LABL_Arena.html')], check=True)
 out = (HERE/'LABL_Arena.html').read_text(encoding='utf-8')
 print('wrote LABL_Arena.html', len(out)//1024, 'KB', out.count('\n'), 'lines')
+
+# ---- GitHub Pages copy: docs/index.html + a version-stamped service worker (docs/ is what Pages serves)
+m = re.search(r'window\.LABL\s*=\s*\{\s*version:\s*"([^"]+)"', read('pre.js.html'))
+VERSION = m.group(1) if m else '0.0.0'
+docs = HERE/'docs'; docs.mkdir(exist_ok=True)
+(docs/'index.html').write_text(out, encoding='utf-8')
+(docs/'sw.js').write_text(read('sw.js').replace('__LABL_VERSION__', VERSION), encoding='utf-8')
+print('wrote docs/index.html + docs/sw.js for version', VERSION)

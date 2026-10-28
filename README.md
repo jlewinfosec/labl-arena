@@ -7,13 +7,17 @@ Extinction Protocol (EP) Field Terminal v2.52.0 by extracting modules and layeri
 
 ```
 cd lint && npm install && cd ..        # once per machine (eslint + acorn)
-python3 build.py                        # -> LABL_Arena.html
+python3 build.py                        # -> LABL_Arena.html + docs/index.html + docs/sw.js
 node walk.js && node flow.js            # smoke + game-day flow tests (need Playwright)
+node pwa.js                             # installed-app test: offline reload + update keeps data
 ```
 
 ## Rules for changing anything
 
-- `LABL_Arena.html` is GENERATED. Never edit it. Never edit `src.html`.
+- `LABL_Arena.html`, `docs/index.html` and `docs/sw.js` are GENERATED. Never edit them. Never edit `src.html`.
+  `docs/` is what GitHub Pages serves (https://jlewinfosec.github.io/labl-arena/); commit it with every release.
+  The version lives in one place: `window.LABL.version` in `overlay/pre.js.html`. Bump it for every
+  release — the service worker's cache name comes from it, so an unchanged version never reaches the tablets.
 - `src.html` is the EP source with every unused line blanked (line numbers match the original
   EP file, so `build.py` ranges still work). It is ~4 MB instead of 16 MB.
 - All LABL changes live in `overlay/`:
@@ -25,7 +29,9 @@ node walk.js && node flow.js            # smoke + game-day flow tests (need Play
   - `terms.js` — wording swaps applied only inside JS string literals (EP → LABL vocabulary).
   - `theme.css.html` — LABL theme; rules are scoped under `body.labl`.
   - `pre.js.html` — shims for globals that dropped EP modules used to provide.
-  - `head.html`, `logo_b64.txt` — embedded fonts (Oswald, Barlow) and the logo.
+  - `head.html`, `logo_b64.txt` — embedded fonts (Oswald, Barlow), manifest link and the logo.
+  - `sw.js` — service worker template (cache-first app shell); `build.py` stamps the version into `docs/sw.js`.
+  - `docs/manifest.webmanifest`, `docs/icon-*.png` — install metadata; icons come from `tools/icons.py`.
 - `undef.json` / `curated.json` + `lint.sh` — auto no-op stubs for EP globals still referenced.
   Run `./lint.sh` after a build when you add EP code ranges, then rebuild.
 
@@ -49,6 +55,7 @@ awards), `ep_bbteams`, `ep_bbplan`, `ep_bbrun`, `ep_bbterm*`, `ep_mtab`, `ep_tab
 ## Tests
 
 `walk.js` visits every screen; `flow.js` runs a full block (plan → teams → 2 rounds → CSV →
-scoreboard); `shots.js` screenshots key screens into `shots/`. A change is done when the build
+scoreboard); `pwa.js` serves `docs/` over http, installs the worker, reloads offline and applies a
+bumped version at the same URL (data must survive both); `shots.js` screenshots key screens into `shots/`. A change is done when the build
 passes, both tests report zero PAGEERROR lines, and the changed screens look right in
 screenshots at 1280×800 (landscape tablet) and 800×1280 (portrait).

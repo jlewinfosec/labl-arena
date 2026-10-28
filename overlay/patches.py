@@ -91,7 +91,7 @@ el("div", { class: "bbp-lab" }, "Heat block"),'''),
   ('"Keeps briefing, lunch and dinner; fills up to "', '"Keeps the briefing; fills up to "'),
 ]
 PATCHES_ALL += [
-  ('Every block in the plan is done. Sync the rounds (Wi-Fi at Scav Base, or the round codes), then award the event\'s Survivor Point from a Scav Base PC: Arena › Standings.', 'Every block in the plan is done. Check the Rounds tab, then award the event\'s League Point under Standings. Back up the tablet tonight (Board Member panel › Settings).'),
+  ('Every block in the plan is done. Sync the rounds (Wi-Fi at Scav Base, or the round codes), then award the event\'s Survivor Point from a Scav Base PC: Arena › Standings.', 'Every block in the plan is done. Check the Rounds tab, then send tonight\'s backup and results to Google Drive.'),
 ]
 PATCHES += [
   ('isKiosk = typeof KO !== "undefined" && Object.keys(KO.su().squads).length;', 'isKiosk = true; // LABL: this tablet is the league record'),
@@ -128,4 +128,14 @@ PATCHES += [
 if (o.practice) return null;''', '''function officerBox(id, d, won, note, o) {
 return null; // LABL: no officer abilities
 if (o.practice) return null;'''),
+]
+
+
+# --- Phase 0: the end-of-day item offers the backup + CSV share (Settings has the same button)
+PATCHES += [
+  ('el("h1", {}, "That\'s the day"),\nkp(', 'el("h1", {}, "That\'s the day"),\n(typeof lablDriveButton === "function" ? el("div", { class: "row", style: "margin:8px 0" }, lablDriveButton("☁ Send backup & results to Google Drive")) : ""),\nkp('),
+]
+# --- Phase 0: no sfx/ folder ships with LABL; never fetch clips next to the page (keeps the synth sounds, no 404s)
+PATCHES += [
+  (': typeof fetch === "function" && KIT_INLINE.map.clips.indexOf(name) >= 0\n? get("sfx/" + name + ".mp3")', ': false\n? get("sfx/" + name + ".mp3")'),
 ]

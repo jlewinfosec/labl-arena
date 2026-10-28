@@ -14,6 +14,8 @@ await p.evaluate(()=>{const R={}; const sq=['MAKERS','KREWE','BAYOU']; ['Jacob',
 await p.evaluate(()=>{setMode('6'); bbRunUnlock(); go({g:'bbrun',s:'plan'});}); await p.waitForTimeout(500);
 await p.fill('input[type=number]','12'); await p.waitForTimeout(300);
 await btn('Build a full day'); await p.waitForTimeout(300); await btn('Tap again to confirm'); await p.waitForTimeout(600);
+// pin the first block to a plain team mode so the round flow is the same every run (the builder is random)
+await p.evaluate(()=>{const P=BBP.get(); const i=P.items.findIndex(x=>x.k==='mode'); if(i>=0){P.items[i].mode='Capture the Flag'; BBP.save(P);} });
 await say('plan built'); console.log(await p.evaluate(()=>BBP.get().items.map(i=>i.k==='brk'?('BRK '+i.kind+' '+(i.min||'')):('MODE '+i.mode+' x'+i.n)).join(' | ')));
 // teams: balanced shuffle
 await p.evaluate(()=>go({g:'bbrun',s:'teams'})); await p.waitForTimeout(400); console.log('team buttons:',(await buttons()).slice(0,30).join(' / '));
@@ -23,7 +25,7 @@ await p.evaluate(()=>go({g:'bbrun'})); await p.waitForTimeout(400); await say('r
 await btn('Briefing done'); await p.waitForTimeout(600); await say('after briefing');
 console.log((await buttons()).join(' / '));
 
-const ff=async(sec)=>{await p.evaluate(sec=>{const r=jget('ep_bbrun',null); if(r&&r.clk&&r.clk.t0){r.clk.t0-=sec*1000; jset('ep_bbrun',r);} },sec); await p.waitForTimeout(1200);};
+const ff=async(sec)=>{await p.evaluate(sec=>{const r=jget('ep_bbrun',null); if(r&&r.clk&&r.clk.t0){r.clk.t0-=((r.clk.len||300)+1)*1000; jset('ep_bbrun',r);} },sec); await p.waitForTimeout(1200);};  // past the round's own length (CTF is 7 min)
 for (let rnd=1; rnd<=2; rnd++) {
   await btn('Start round'); await p.waitForTimeout(4500); await say('round '+rnd+' running');
   await ff(301); await say('round '+rnd+' horn'); console.log((await buttons()).slice(9,22).join(' / '));
