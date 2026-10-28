@@ -1435,6 +1435,25 @@ body.labl .labl-pack-row{font-size:calc(18px*var(--tx));margin:4px 0}
 body.labl .labl-pack-row.done span{opacity:.55;text-decoration:line-through}
 body.labl .labl-pack-row b{color:var(--gold);font-family:var(--hd)}
 body.labl .labl-pack-row small{color:var(--bone-dim);font-size:calc(13px*var(--tx))}
+/* Phase 4: the game screen in LABL colors (no CRT frame, no scanlines, no flicker) */
+body.labl .screen{background:radial-gradient(ellipse at 50% 45%, #172b74 0%, #0f1f5c 60%, #0b1740 100%); border:3px solid var(--orange); box-shadow:0 0 0 3px #0b1740, 0 6px 24px rgba(0,0,0,.45); border-radius:12px; padding:10px}
+body.labl .screen::after{display:none}
+body.labl canvas.px{image-rendering:auto}
+body.labl .hud .t{font-family:var(--hd); color:var(--gold)}
+body.labl .hud .bar i{background:var(--orange)}
+body.labl .msg{font-family:var(--px); color:var(--gold)}
+body.labl .labl-tagged{display:block; width:100%; max-width:560px; margin:14px auto 0; min-height:60px; border:2px solid var(--gold); background:rgba(255,211,106,.1); color:var(--gold); font-family:var(--hd); font-size:calc(22px*var(--tx)); text-transform:uppercase; letter-spacing:.04em}
+body.labl .labl-tagged small{display:block; font-family:var(--px); font-size:calc(13px*var(--tx)); text-transform:none; letter-spacing:0; color:var(--bone-dim)}
+body.labl .labl-result{text-align:center; max-width:720px; margin:12px auto}
+body.labl .labl-result h1{font-size:calc(48px*var(--tx)); margin:6px 0}
+body.labl .labl-result.win{border:3px solid var(--orange)}
+body.labl .labl-result.fail{border:3px solid var(--red)}
+body.labl .labl-time{font-family:var(--hd); font-size:calc(96px*var(--tx)); line-height:1; color:var(--gold); margin:10px 0 0}
+body.labl .labl-time.red{color:var(--red)}
+body.labl .labl-time.ok{color:var(--orange)}
+body.labl .labl-time-lbl{font-family:var(--mono); font-size:calc(14px*var(--tx)); letter-spacing:.16em; color:var(--bone-dim); margin-bottom:8px}
+body.labl .labl-show{font-family:var(--hd); font-size:calc(30px*var(--tx)); color:var(--orange); margin:8px 0}
+body.labl .labl-cause{font-family:var(--mono); font-size:calc(15px*var(--tx)); letter-spacing:.16em; color:var(--red)}
 </style>
 
 </head>
@@ -1445,7 +1464,7 @@ body.labl .labl-pack-row small{color:var(--bone-dim);font-size:calc(13px*var(--t
 <script>
 /* ============ LABL PRE-SHIMS: globals the dropped EP modules used to provide ============
    Kept deliberately small and honest: each one returns the "nothing's there" value the EP code already handles. */
-window.LABL = { version: "0.5.0", name: "LABL Arena" };
+window.LABL = { version: "0.6.0", name: "LABL Arena" };
 var NATIVE = { on: false, plugin: () => null, haptic: () => {} };
 var EPSYNC = { on: false, isMain: () => true, main: () => true };
 var RAD_REMOTE = null, WX_REMOTE = null, FIELD_REMOTE = null, ALERT_REMOTE = null, BRK_REMOTE = null, BC_REMOTE = null;
@@ -2830,7 +2849,8 @@ rr = R && R[d];
 if (rr && rr.secs != null) return rr.secs;
 return d === 1 ? LOCKOUT_SEC : G.exclusive ? LOCKOUT_EXCLUSIVE_SEC : LOCKOUT_UNTRAINED_SEC;
 };
-const winLockFor = id => {
+const winLockFor = id => 0; // LABL: the other side plays right after a win
+const EP_winLockFor = id => {
 const o = STATION_LOCKS[id],
 v = o && o.w;
 return v != null && v !== "" && !isNaN(+v) ? +v : WIN_LOCK_SEC;
@@ -2840,7 +2860,8 @@ const o = STATION_LOCKS[id],
 v = o && o.m;
 return v != null && v !== "" && !isNaN(+v) ? +v : MAX_WINS;
 };
-const lockFor = (G, d) => {
+const lockFor = (G, d) => d === 2 ? 60 : 30; // LABL
+const EP_lockFor = (G, d) => {
 const id = idOf(G),
 o = id && STATION_LOCKS[id],
 v = o && o[d === 1 ? "c" : "u"];
@@ -13148,7 +13169,7 @@ flavor: "The tower's coolant line runs under rusted access panels. Some panels a
 goal: d => "Connect the inlet (left) to the drain (right).",
 padHow: "Move to a panel or pipe. Press A to lift it or turn it.",
 rules: d => {
-const c = [0, 30, 22][d],
+const c = lablMgV([0, 30, 22], [0, 18, 14], d),
 s = [0, 2.6, 1.8][d],
 a = [0, 2, 3][d],
 sh = [0, 2, 3][d];
@@ -13167,7 +13188,7 @@ let t0assist = 0;
 const d = api.d,
 COLS = [0, 6, 7][d],
 ROWS = [0, 5, 6][d],
-COUNT = [0, 30, 22][d],
+COUNT = lablMgV([0, 30, 22], [0, 18, 14], d),
 STEP0 = [0, 2.6, 1.8][d],
 SEALS = [0, 2, 3][d],
 ALARMS = [0, 2, 3][d],
@@ -13827,7 +13848,7 @@ const d = api.d,
 L = [0, 5, 7, 7][d],
 N = [0, 8, 16, 20][d],
 TRIES = d === 3 ? 3 : 4,
-TIME = [0, 180, 150, 120][d],
+TIME = lablMgTime([0, 180, 150, 120], d),
 BR = [0, 6, 2, 1][d],
 PEN = [0, 10, 15, 20][d],
 RW = [0, 45, 30, 20][d]; // d=3: BANK BREACH (kiosk Bank tab, Ghost-Scav)
@@ -14035,7 +14056,7 @@ it stays the same); a taller track; an outlined needle with tips; a segmented te
 slide down. No full-canvas flash at night. Zones, speeds and timings unchanged. */
 GAMES.lock = {
 truecolor: true,
-brief: d => brief3(`Set all ${[0, 6, 8][d]} pins.`, "Tap when the needle is in the dotted zone.", `${[0, 3, 3][d]} bent picks and the lock holds.`),
+brief: d => brief3(`Set all ${lablMgV([0, 6, 8], [0, 4, 4], d)} pins.`, "Tap when the needle is in the dotted zone.", `${[0, 3, 3][d]} bent picks and the lock holds.`),
 icon: "⚿",
 title: "Pick the lock",
 who: "Ghost-Player",
@@ -14046,10 +14067,10 @@ winTitle: "Lock open",
 par: [0, 55, 70],
 failTitle: "Pick snapped",
 flavor: "Cheap padlock, expensive contents. Your hands are shaking and something is scratching at the fence.",
-goal: d => `Set all ${[0, 6, 8][d]} pins. Tap when the needle is in the dotted zone.`,
+goal: d => `Set all ${lablMgV([0, 6, 8], [0, 4, 4], d)} pins. Tap when the needle is in the dotted zone.`,
 padHow: "Press A when the needle is in the dotted zone.",
 rules: d => {
-const n = [0, 6, 8][d],
+const n = lablMgV([0, 6, 8], [0, 4, 4], d),
 p = [0, 3, 3][d];
 // MG11: Goal · How · Fail
 return [
@@ -14060,9 +14081,9 @@ return [
 },
 start(api) {
 const d = api.d,
-N = [0, 6, 8][d],
+N = lablMgV([0, 6, 8], [0, 4, 4], d),
 PICKS = [0, 3, 3][d],
-TIME = [0, 100, 100][d],
+TIME = lablMgTime([0, 100, 100], d),
 Z0 = [0, 0.13, 0.11][d],
 V0 = [0, 0.48, 0.54][d], // MG12 (Oct 22): 20% slower from the first pin; every later pin still grows from it (was 0.6 / 0.68)
 SHRINK = [0, 0.05, 0.06][d],
@@ -14503,7 +14524,7 @@ flavor: "Behind the panel: a board of scorched relays. Pair the matching nodes b
 goal: d => "Tap two nodes to find matching pairs. Match them all.",
 padHow: "Move to a node. Press A to flip it.",
 rules: d => {
-const s = [0, 35, 20][d],
+const s = lablMgV([0, 35, 20], [0, 25, 15], d),
 p = [0, 2, 4][d],
 tp = [0, 3, 6][d];
 // MG11: Goal · How · Fail
@@ -14527,9 +14548,9 @@ const d = api.d,
 [4, 4],
 [4, 5]
 ][d],
-TIME = [0, 100, 105][d], // MG2: Untrained 120 -> 105 s
+TIME = lablMgTime([0, 100, 105], d), // MG2: Untrained 120 -> 105 s
 PEN = [0, 2, 4][d],
-SHIFT = [0, 35, 20][d],
+SHIFT = lablMgV([0, 35, 20], [0, 25, 15], d),
 TPEN = [0, 3, 6][d],
 PEEK = [0, 2, 0][d],
 TAMP = 2;
@@ -14763,7 +14784,7 @@ let LEEWAY = 1;
 const d = api.d,
 N = [0, 3, 3][d],
 HALF = [0, 7, 4.4][d],
-TIME = [0, 120, 110][d],
+TIME = lablMgTime([0, 120, 110], d),
 OFF = [0, 40, 62][d],
 DRIP = [0, 0.4, 0.45][d],
 TWITCH = [0, 1.6, 2.7][d],
@@ -15394,7 +15415,7 @@ SPD = [0, 600, 450][d],
 REV = [0, 0.15, 0.4][d],
 DEC = [0, 0, 1][d],
 STR = [0, 3, 2][d],
-TIME = [0, 170, 160][d],
+TIME = lablMgTime([0, 170, 160], d),
 SCR = [0, 0.15, 0.35][d];
 const SY = ["☣", "☢", "✚", "⚠", "☠", "⚙", "✖", "▲", "◆"].map(s => s + "\uFE0E");
 const h = hud(api.root, TIME);
@@ -15657,7 +15678,7 @@ GAMES.wire = {
 truecolor: true,
 brief: d =>
 brief3(
-`Fix ${[0, 3, 4][d]} panels.`,
+`Fix ${lablMgV([0, 3, 4], [0, 2, 2], d)} panels.`,
 d === 2 ? "Match wires to lamps. A surge changes the order." : "Drag each wire to the lamp the panel names.",
 `${[0, 4, 3][d]} sparks. The crackling live wire goes last.`
 ),
@@ -15670,10 +15691,10 @@ winTitle: "Power restored",
 par: [0, 55, 85],
 failTitle: "Panel shorted",
 flavor: "Somebody stripped this junction box for copper. Every wire is tagged, but whoever tagged them was drunk.",
-goal: d => `Fix ${[0, 3, 4][d]} panels. Drag each wire to the right lamp.`,
+goal: d => `Fix ${lablMgV([0, 3, 4], [0, 2, 2], d)} panels. Drag each wire to the right lamp.`,
 padHow: "The left stick moves the cursor. Hold A on a wire and move it to the right lamp, then let go.",
 rules: d => {
-const n = [0, 3, 4][d],
+const n = lablMgV([0, 3, 4], [0, 2, 2], d),
 s = [0, 4, 3][d];
 // MG11: Goal · How · Fail (D-295: fifth-grade words, fewer of them)
 return [
@@ -15691,10 +15712,10 @@ COL: GC,
 MEANS: { WIRE: "the wire's color", TAG: "the word on the tag", INK: "the color of the letters" },
 start(api) {
 const d = api.d,
-N = [0, 3, 4][d],
+N = lablMgV([0, 3, 4], [0, 2, 2], d),
 WIRES = [0, 4, 5][d],
 STR = [0, 4, 3][d],
-TIME = [0, 120, 130][d];
+TIME = lablMgTime([0, 120, 130], d);
 const WEIGHTS = d === 1 ? { WIRE: 0.5, TAG: 0.5 } : { WIRE: 0.2, TAG: 0.4, INK: 0.4 };
 const SURGE = d === 2;
 const names = ["RED", "BLUE", "YELLOW", "GREEN", "WHITE", "ORANGE"],
@@ -16227,7 +16248,7 @@ DEF.NAMES[DEF.todaySet()] +
 start(api) {
 api.pad = { legend: "⬌ Pick · A Cut / press · Hold A Big button, VENT · B Quit" }; // PAD: buttons already; the legend and the briefing line
 const d = api.d,
-TIME = [0, 300, 170][d],
+TIME = lablMgTime([0, 300, 170], d),
 STR = [0, 3, 2][d],
 FILL = [0, 45, 26][d];
 const h = hud(api.root, TIME);
@@ -16521,7 +16542,7 @@ rules: d => [
 ],
 start(api) {
 const d = api.d,
-TIME = [0, 120, 110][d],
+TIME = lablMgTime([0, 120, 110], d),
 WID0 = [0, 0.05, 0.035][d],
 FILL = [0, 50, 60][d],
 DRIFT0 = [0, 0.045, 0.06][d],
@@ -16553,7 +16574,7 @@ H = 156; // D-295: taller (was 120): the scope and the dial both get room
 const cv = el("canvas", { class: "px" });
 const g = crt(cv, W, H);
 const h = hud(api.root, TIME);
-const upI = el("i", { style: "width:0%;background:repeating-linear-gradient(90deg,#9bd45a 0 6px,#4f7a2c 6px 8px)" });
+const upI = el("i", { style: "width:0%;background:repeating-linear-gradient(90deg,#f07820 0 6px,#9a4d14 6px 8px)" });
 const msg = el("div", { class: "msg" }, "Sweep the dial and listen for it.");
 api.root.append(
 el("div", { class: "screen" }, cv),
@@ -16619,7 +16640,7 @@ tcBG(g, W, H, 10);
 rrect(g, 6, SY, W - 12, SH, 4);
 g.fillStyle = "rgba(0,0,0,.4)";
 g.fill();
-g.strokeStyle = locked ? GC.GREEN : C.phd;
+g.strokeStyle = locked ? "#ffd36a" : C.phd;
 g.lineWidth = locked ? 3 : 0.6; // D-295: a lock is a thick green frame
 g.stroke();
 g.strokeStyle = C.phdd;
@@ -16634,14 +16655,14 @@ const wv = Math.sin((x + T * 90) / 6),
 y = SM + (fake ? Math.sign(wv) * 0.9 : wv) * s * 25 + (R() - 0.5) * (1 - s) * 60;
 x ? g.lineTo(6 + x, clamp(y, SY + 2, SY + SH - 2)) : g.moveTo(6, clamp(y, SY + 2, SY + SH - 2));
 }
-tcGlow(g, locked ? GC.GREEN : C.phd, locked ? 6 : 3);
-g.strokeStyle = locked ? GC.GREEN : C.ph2;
+tcGlow(g, locked ? "#ffd36a" : C.phd, locked ? 6 : 3);
+g.strokeStyle = locked ? "#ffd36a" : C.ph2;
 g.lineWidth = locked ? 1.8 : 0.9;
 g.stroke();
 noglow(g);
 // strength: five outlined bars and a count
 const bars = Math.round(s * 5),
-bc = bars >= 4 ? GC.GREEN : GC.YELLOW;
+bc = bars >= 4 ? "#ffd36a" : GC.YELLOW;
 for (let i = 0; i < 5; i++) {
 const on = i < bars,
 bx = W - 52 + i * 8,
@@ -16661,7 +16682,7 @@ g.fillRect(9, SY + 3, 66, 30);
 ctext(g, (88 + dial * 20).toFixed(1) + " MHz", 13, SY + 11, 12, C.am);
 if (locked) {
 rrect(g, 12, SY + 18, 42, 12, 2);
-g.fillStyle = GC.GREEN;
+g.fillStyle = "#ffd36a";
 g.fill();
 ctext(g, "LOCKED", 33, SY + 24.5, 10, "#000", "center", "Share Tech Mono");
 } else ctext(g, "SEARCHING", 13, SY + 24, 10, C.bone, "left", "Share Tech Mono");
@@ -16846,7 +16867,7 @@ Swing speeds, weld window and widths unchanged. ===== */
 GAMES.stack = {
 truecolor: true,
 brief: d =>
-brief3(`Rivet ${[0, 10, 12][d]} plates in a straight stack.`, "Tap to drop. Line it up with the plate below.", `${[0, 3, 2][d]} misses ruins the armor.`),
+brief3(`Rivet ${lablMgV([0, 10, 12], [0, 6, 6], d)} plates in a straight stack.`, "Tap to drop. Line it up with the plate below.", `${[0, 3, 2][d]} misses ruins the armor.`),
 icon: "▣",
 title: "Rivet the armor",
 was: "Makeshift armor",
@@ -16858,10 +16879,10 @@ par: [0, 45, 55],
 failTitle: "Rig ruined",
 flavor:
 "Back at the LABL HQ workbench: a vest that has seen better days, a bucket of scrap plate, and a rivet gun that spits sparks. Every crooked plate gets ground off.",
-goal: d => `Rivet ${[0, 10, 12][d]} plates. Tap to drop each plate on the stack.`,
+goal: d => `Rivet ${lablMgV([0, 10, 12], [0, 6, 6], d)} plates. Tap to drop each plate on the stack.`,
 padHow: "Press A to drop the plate.",
 rules: d => {
-const n = [0, 10, 12][d],
+const n = lablMgV([0, 10, 12], [0, 6, 6], d),
 sm = [0, 3, 2][d];
 // MG11: Goal · How · Fail
 return [
@@ -16876,12 +16897,12 @@ return [
 },
 start(api) {
 const d = api.d,
-GOAL = [0, 10, 12][d],
+GOAL = lablMgV([0, 10, 12], [0, 6, 6], d),
 W0 = [0, 64, 50][d],
 V0 = [0, 55, 62][d],
 ACC = [0, 0.045, 0.075][d],
 STR = [0, 3, 2][d],
-TIME = [0, 90, 90][d],
+TIME = lablMgTime([0, 90, 90], d),
 GUST = d === 2,
 LH = 9;
 const W = 120,
@@ -17262,7 +17283,7 @@ api.pad = { legend: "⬍ Angle or Power · ◀▶ Adjust · A Fire · B Quit" };
 const d = api.d,
 SHELLS = [0, 7, 5][d],
 HR = [0, 6, 5][d],
-TIME = [0, 150, 120][d],
+TIME = lablMgTime([0, 150, 120], d),
 WMAX = [0, 10, 16][d],
 KEEP = [0, 2, 1][d],
 WIN = 3;
@@ -17824,7 +17845,7 @@ start(api) {
 api.pad = { legend: "⬌ Pick · Hold A Pour / Cool · A React · B Quit" }; // PAD: buttons already; the legend and the briefing line
 const this_par = GAMES.vaccine.par[api.d];
 const d = api.d,
-TIME = [0, 150, 135][d],
+TIME = lablMgTime([0, 150, 135], d),
 MAXR = [0, 20, 30][d],
 RAMP = [0, 12, 22][d],
 FLUSHC = [0, 8, 12][d],
@@ -18951,7 +18972,7 @@ const d = api.d,
 N = 9,
 LEGS = [0, 3, 4][d],
 STR = [0, 3, 2][d],
-TIME = [0, 180, 170][d],
+TIME = lablMgTime([0, 180, 170], d),
 SLACK = [0, 5, 4][d],
 NPAT = [0, 3, 3][d],
 FOG = d === 2 ? 3 : 99;
@@ -19657,7 +19678,7 @@ return [
 start(api) {
 const d = api.d,
 STR = [0, 4, 3][d],
-TIME = [0, 120, 120][d],
+TIME = lablMgTime([0, 120, 120], d),
 NEED = [0, 6, 8][d],
 BAND = d === 1 ? [48, 82] : [55, 78],
 PUFF = [0, 13, 12][d];
@@ -20404,7 +20425,7 @@ return [
 start(api) {
 const d = api.d,
 STR = [0, 3, 2][d],
-TIME = [0, 150, 150][d],
+TIME = lablMgTime([0, 150, 150], d),
 ROUNDS = 2;
 const COLS = 5,
 ROWS = 7,
@@ -20980,7 +21001,7 @@ typeof MTAB === "function" && MTAB()
 },
 start(api) {
 const d = api.d,
-TIME = [0, 45, 45][d],
+TIME = lablMgTime([0, 45, 45], d),
 STR = [0, 4, 3][d],
 STEP = [0, 1 / 18, 1 / 22][d],
 SLIP = [0, 0.1, 0.16][d],
@@ -21384,7 +21405,7 @@ typeof MTAB === "function" && MTAB()
 },
 start(api) {
 const d = api.d,
-TIME = [0, 120, 120][d],
+TIME = lablMgTime([0, 120, 120], d),
 N = [0, 4, 5][d], // fragments PER PATIENT
 PATIENTS = 2,
 STR = [0, 3, 2][d],
@@ -22319,7 +22340,7 @@ return [
 },
 start(api) {
 const d = api.d,
-TIME = [0, 150, 135][d],
+TIME = lablMgTime([0, 150, 135], d),
 STR = [0, 3, 2][d];
 let code = patCode(d, api.practice),
 M = patMap(patParse(code).v, d);
@@ -22728,7 +22749,7 @@ GAMES.smash = {
 truecolor: true,
 brief: d =>
 brief3(
-`Break the lock: ${[0, 3, 5][d]} hits.`,
+`Break the lock: ${lablMgV([0, 3, 5], [0, 3, 4], d)} hits.`,
 d === 1 ? "SWING in the striped zone. Bullseye counts double." : "SWING when the marker is in the striped zone.", // D-295: double only on the class setting (PD)
 "4 glances jam it. When it breaks, shout CRASH!"
 ),
@@ -22797,8 +22818,8 @@ return box;
 },
 start(api) {
 const d = api.d,
-NEED = [0, 3, 5][d],
-TIME = [0, 45, 30][d], // MG1: 45 s Brute-Scav, 30 s Untrained (was 15 / 22)
+NEED = lablMgV([0, 3, 5], [0, 3, 4], d),
+TIME = lablMgTime([0, 45, 30], d), // MG1: 45 s Brute-Scav, 30 s Untrained (was 15 / 22)
 SPD0 = [0, 0.8, 1.0][d], // MG12 (Oct 22): 20% slower from the first swing; the 12% per hit still grows from it (was 1.0 / 1.25)
 GOOD0 = [0, 0.28, 0.22][d],
 PERF0 = [0, 0.09, 0.06][d],
@@ -41284,7 +41305,8 @@ function lablCfg() {
     setup: !!c.setup,                  // first-run done
     persist: c.persist || "",          // navigator.storage.persist() result: yes / no / na
     gear: c.gear || {},                // per-mode prop overrides (Phase 3)
-    everyday: c.everyday || null       // every-day packing list override
+    everyday: c.everyday || null,      // every-day packing list override
+    mg: c.mg === "story" ? "story" : "arena"   // Mission Tablet timing profile outside the arena (Phase 4)
   };
 }
 function lablCfgSet(patch) {
@@ -41558,6 +41580,7 @@ function lablRosterTab(say) {
 /* mini-games: on/off, Hard setting, log */
 function lablGamesTab(say) {
   const C = lablCfg(), ids = orderedIds();
+  const prof = el("button", { class: "btn small labl-chip" + (C.mg === "story" ? "" : " on"), onclick: () => { lablCfgSet({ mg: C.mg === "story" ? "arena" : "story" }); route(); } }, C.mg === "story" ? "Story timing" : "Arena timing");
   const hard = el("input", { type: "checkbox" }); hard.checked = C.hard;
   hard.addEventListener("change", () => { lablCfgSet({ hard: hard.checked }); say("Hard setting " + (hard.checked ? "offered" : "hidden") + " on the tablet."); });
   const rows = ids.map(id => {
@@ -41573,10 +41596,11 @@ function lablGamesTab(say) {
     plate(el("h2", {}, "Mini-games on the Mission Tablet"),
       kp("Switch any game off for the day. Games that need extra phones or a second screen start OFF. Every game plays at Standard; tick the box to also offer Hard.", "color:var(--bone-dim)"),
       el("label", { class: "labl-chk" }, hard, "Offer the Hard setting"),
+      el("div", { class: "row", style: "gap:10px;align-items:center;margin:6px 0" }, el("span", { class: "labl-lbl2", style: "margin:0" }, "Timing outside the arena"), prof, kp("Arena: short games (about 60 s Standard, 45 s Hard), the 8 arena fits only. Story: EP's full games, everything but the multi-device three. In the arena, each mode block's chip decides.", "color:var(--bone-dim);font-size:calc(13px*var(--tx));margin:0")),
       el("div", { class: "labl-roster" }, ...rows)),
     plate(el("h2", {}, "Tablet log · newest first"),
       el("div", { class: "labl-log" }, ...(L.length ? L.map(r => el("div", { style: "color:" + (r.pr ? "var(--bone-dim)" : r.ok ? "var(--ph)" : "var(--red)") },
-        new Date(r.t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) + " · " + ((GAMES[r.id] || {}).title || r.id) + " · " + (GAMES[r.id] ? setName(GAMES[r.id], r.d) : "") + " · " + (r.pr ? "practice · " : "") + (r.ok ? "WIN " + r.g : "FAIL") + " · " + fmt(r.s || 0))) : [kp("No runs yet.", "color:var(--bone-dim)")])),
+        new Date(r.t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) + " · " + ((GAMES[r.id] || {}).title || r.id) + " · " + (GAMES[r.id] ? setName(GAMES[r.id], r.d) : "") + " · " + (r.pr ? "practice · " : "") + (r.tagged ? "TAGGED" : r.ok ? "WIN" : "FAIL") + " · " + fmt(r.s || 0))) : [kp("No runs yet.", "color:var(--bone-dim)")])),
       el("div", { class: "row", style: "gap:6px;margin-top:8px" },
         el("button", { class: "btn small", onclick: () => { mtabLogClear(); route(); } }, "Clear the log"),
         el("button", { class: "btn small", onclick: () => { mtabClearLocks(); say("Lockouts cleared."); } }, "Clear lockouts"))));
@@ -42190,6 +42214,176 @@ function lablGearSettings(say) {
   return el("div", {}, el("label", { class: "labl-lbl" }, "Props for a mode (one per line, “Item × 2”)", sel, ta), el("div", { class: "row", style: "gap:8px" }, saveG, resetG),
     el("label", { class: "labl-lbl", style: "margin-top:12px" }, "Every day", ev), saveE);
 }
+
+/* ============ MINI-GAMES (Phase 4) ============
+   The LABL look inside every game, arena wording on every fail, one lockout rule (30 s Standard / 60 s Hard, this tablet
+   only), finish time instead of grades, two timing profiles (arena / story) and an "I got tagged" exit. */
+/* ---- palette: the chrome palette every canvas reads (PH / TC) becomes navy + orange; no night or red-light modes ---- */
+const LABL_PH = { bg: "#0b1740", bg1: "#172b74", grid: "rgba(240,120,32,.10)", ph: "#f07820", ph2: "#ff9a4a", phd: "#9a4d14", phdd: "#3a2410", am: "#ffd36a", amd: "#8a5a1c", rd: "#ff5a4e", rdd: "#7a1712", bone: "#f4f6fb", steel: "#2a4190", cy: "#6fd8ff" };
+Object.assign(PH, LABL_PH); Object.assign(PH_BASE, LABL_PH);
+applyPH = function () { Object.assign(PH, LABL_PH); };
+lightNow = () => "day";
+tcMode = () => "day";
+TC = () => LABL_PH;
+const lablCanvasBG = function (g, W, H, step = 10) {
+  const gr = g.createRadialGradient(W / 2, H / 2, 4, W / 2, H / 2, Math.max(W, H) * 0.75);
+  gr.addColorStop(0, LABL_PH.bg1); gr.addColorStop(1, LABL_PH.bg);
+  g.fillStyle = gr; g.fillRect(0, 0, W, H);
+  g.strokeStyle = LABL_PH.grid; g.lineWidth = 0.4; g.beginPath();
+  for (let x = step; x < W; x += step) { g.moveTo(x, 0); g.lineTo(x, H); }
+  for (let y = step; y < H; y += step) { g.moveTo(0, y); g.lineTo(W, y); }
+  g.stroke();
+};
+crtBG = lablCanvasBG; tcBG = lablCanvasBG;
+/* literal EP colors are translated as they're set on a canvas: near-blacks → navy, phosphor greens → orange, amber → gold.
+   Game colors with a meaning (the wire legend's RED / GREEN / BLUE, the yellow of a warning) are left alone. */
+const LABL_CMAP = {
+  "#000": "#0b1740", "#000000": "#0b1740", "#050505": "#0b1740", "#07090a": "#0b1740", "#020604": "#0b1740", "#031004": "#0b1740", "#020503": "#0b1740", "#030805": "#0b1740",
+  "#111": "#101f52", "#111111": "#101f52", "#141414": "#101f52", "#1d2226": "#172b74", "#2e3438": "#203880", "#3b4247": "#2a4190", "#4d585e": "#2a4190", "#5d666c": "#3b55b0", "#0b1c10": "#172b74", "#08170d": "#172b74", "#0a1a0f": "#172b74",
+  "#8dff8a": "#f07820", "#a8ffa4": "#ff9a4a", "#57c95a": "#ff9a4a", "#8ef08a": "#ff9a4a", "#2e7a36": "#9a4d14", "#6fcf74": "#c86418", "#123019": "#3a2410", "#3a8a40": "#9a4d14", "#4f8f55": "#9a4d14",
+  "#5c6a62": "#3b55b0", "#3f4a44": "#2a4190", "#2a3236": "#203880", "#1c2420": "#172b74", "#8b979d": "#8fa3e0", "#b9c7cf": "#c9d4f2", "#d6ffd0": "#ffd36a",
+  "#ffb347": "#ffd36a", "#ffc56b": "#ffd36a", "#8a5a1c": "#8a5a1c", "#ff4b3e": "#ff5a4e", "#ff6a5e": "#ff5a4e", "#d8e6cf": "#f4f6fb", "#b9c2b4": "#aab6dc", "#d8d2c0": "#e8ecf7", "#c9d3d6": "#e8ecf7", "#d4d9dd": "#e8ecf7"
+};
+const LABL_CCACHE = {};
+function lablColor(v) {
+  if (typeof v !== "string") return v;
+  const k = v.toLowerCase();
+  if (LABL_CCACHE[k] !== undefined) return LABL_CCACHE[k];
+  let out = LABL_CMAP[k];
+  if (!out) {
+    const m = k.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+))?\s*\)$/);
+    if (m) {
+      const r = +m[1], g = +m[2], b = +m[3], a = m[4] == null ? "" : "," + m[4];
+      if (r === 141 && g === 255 && b === 138) out = "rgba(240,120,32" + a + ")";        // phosphor glow
+      else if (r === 255 && g === 179 && b === 71) out = "rgba(255,211,106" + a + ")";   // amber glow
+      else if (r === 255 && g === 75 && b === 62) out = "rgba(255,90,78" + a + ")";      // fail red glow
+      else if (r === 0 && g === 0 && b === 0 && m[4] != null && +m[4] >= 0.6) out = "rgba(11,23,64" + a + ")"; // heavy black shade
+    }
+  }
+  LABL_CCACHE[k] = out || v;
+  return out || v;
+}
+(function () {
+  const proto = CanvasRenderingContext2D.prototype;
+  ["fillStyle", "strokeStyle", "shadowColor"].forEach(k => {
+    const d = Object.getOwnPropertyDescriptor(proto, k); if (!d || !d.set) return;
+    Object.defineProperty(proto, k, { configurable: true, enumerable: d.enumerable, get: d.get, set(v) { d.set.call(this, lablColor(v)); } });
+  });
+  const acs = CanvasGradient.prototype.addColorStop;
+  CanvasGradient.prototype.addColorStop = function (o, c) { return acs.call(this, o, lablColor(c)); };
+})();
+
+/* ---- timing profiles ---- */
+const LABL_MG_CAP = { 1: 60, 2: 45 };
+function lablMgProfile() {
+  if (typeof arenaOn === "function" && arenaOn()) { const it = lablCurItem(); return it && it.mg === "story" ? "story" : "arena"; }
+  return lablCfg().mg === "story" ? "story" : "arena";
+}
+function lablMgTime(arr, d) { const t = arr[d] != null ? arr[d] : arr[arr.length - 1]; return lablMgProfile() === "arena" ? Math.min(t, LABL_MG_CAP[d === 2 ? 2 : 1]) : t; }
+function lablMgV(story, arena, d) { return (lablMgProfile() === "arena" ? arena : story)[d]; }
+const LABL_ARENA_GAMES = ["smash", "heave", "lock", "wire", "stack", "bypass", "tune", "pipe"];
+const LABL_MULTI_GAMES = ["patrol", "bunker", "defuse"];
+/* which stations the tablet offers: arena profile = the 8 arena fits; story = everything but the multi-device three; the Board Member's on/off list applies on top */
+mtabStations = function () {
+  const off = lablCfg().gamesOff, st = mtabCfg().st, prof = lablMgProfile();
+  return orderedIds().filter(id => !off.includes(id) && (prof === "arena" ? LABL_ARENA_GAMES.includes(id) : !LABL_MULTI_GAMES.includes(id)) && (!st.length || st.includes(id)));
+};
+
+/* ---- one lockout rule: a fail locks this station on this tablet for 30 s (Standard) or 60 s (Hard). No jams, no out-of-play, no strikes ---- */
+Object.keys(FAIL_RULES).forEach(id => { FAIL_RULES[id] = { 1: { scope: "all" }, 2: { scope: "all" } }; });
+strikeNo = () => 1;   // lockFor / lockDefault / winLockFor are const in EP: patched in patches.py
+applyFail = function (id, d) {
+  const L = lkGet(); L[id] = L[id] || { all: {}, sq: {} };
+  const until = Date.now() + lockFor(GAMES[id], d) * 1000;
+  L[id].all = { until, by: "tablet", t: Date.now() };
+  lkSet(L);
+  return { scope: "all", until, rule: {}, strike: 1, out3: 0 };
+};
+/* ---- fail wording: arena language, every game ---- */
+const LABL_CAUSE = { time: "⏱ CLOCK RAN OUT", mistakes: "✖ TOO MANY SLIPS", abort: "■ WALKED AWAY", cut: "⏻ SCREEN LOST", other: "✖ NO GOOD", lockonly: "⏻ RUN ENDED" };
+const LABL_FAIL = {
+  pipe:    { title: "Line still dead",      line: "The air line never primed. Clear the station: it's locked for a moment." },
+  term:    { title: "Password held",        line: "Too many wrong guesses and the screen locked itself. Step off and let it cool down." },
+  lock:    { title: "Pick snapped",         line: "The last pick broke off in the lock. The station's locked for a moment; your team can try again after." },
+  bypass:  { title: "Circuit tripped",      line: "The breaker popped and the panel went dark. Give it a moment to reset." },
+  suture:  { title: "Vest still torn",      line: "The patch didn't hold. The repair station locks for a moment." },
+  seal:    { title: "Gate code rejected",   line: "Wrong code one time too many. The keypad is locked for a moment." },
+  wire:    { title: "Panel shorted",        line: "A wire went to the wrong lamp and the panel tripped. It resets in a moment." },
+  defuse:  { title: "Charge went off",      line: "The charge blew. The station is down for a moment while the smoke clears." },
+  tune:    { title: "Signal lost",          line: "The signal slipped away before the upload filled. The radio locks for a moment." },
+  stack:   { title: "Stack collapsed",      line: "The plates toppled. The armor bench locks for a moment." },
+  mortar:  { title: "Mortar off target",    line: "Out of shells with no hit on the barrel. The gun's locked for a moment." },
+  vaccine: { title: "Dye pack spoiled",     line: "The mix went wrong and the batch is useless. The bench locks for a moment." },
+  triage:  { title: "Triage missed",        line: "Too many calls went wrong. The triage station locks for a moment." },
+  nav:     { title: "Lost them",            line: "The team on the radio never found the route. The station locks for a moment." },
+  fire:    { title: "Smoke, no fire",       line: "The signal never caught. The fire pit locks for a moment." },
+  ruck:    { title: "Pack blew out",        line: "Packed wrong and the seam split. The gear bench locks for a moment." },
+  heave:   { title: "Shutter slammed",      line: "You lost the rhythm and the shutter came down. It locks for a moment; try again with your partner after." },
+  surgery: { title: "Patient lost",         line: "Too slow on the table. The medic station locks for a moment." },
+  patrol:  { title: "Spotted",              line: "The patrol saw you cross. The station locks for a moment." },
+  smash:   { title: "Lock held",            line: "Every swing missed the sweet spot. The lock's still shut, and the station locks for a moment." },
+  bunker:  { title: "Door seized",          line: "The team pulled the wrong order and the door jammed. It resets in a moment." }
+};
+Object.entries(LABL_FAIL).forEach(([id, f]) => { if (GAMES[id]) GAMES[id].failTitle = f.title; });
+/* the intro's "If you fail" fold: the arena story and the lockout, nothing else */
+penaltyPreview = function (id, d) {
+  const F = LABL_FAIL[id] || {};
+  return el("details", { class: "fold", open: "" }, el("summary", { style: "color:var(--red)" }, "If you fail"),
+    el("div", { style: "font-family:var(--px);font-size:calc(16px*var(--tx));line-height:1.4;margin:4px 0" }, (F.title ? F.title + ". " : "") + "The station locks on this tablet for " + fmt(lockFor(GAMES[id], d)) + " (" + (d === 2 ? "Hard" : "Standard") + "). Nothing else. Tagged while playing? Tap I got tagged and step away: no lockout."));
+};
+/* ---- the result screens: finish time big on a win, the arena fail story and the lockout countdown on a fail ---- */
+result = function (id, d, won, note, o = {}) {
+  app.innerHTML = "";
+  const G = GAMES[id], RT = [];
+  cleanup = () => RT.forEach(clearInterval);
+  const back = el("div", { class: "row", style: "justify-content:center;gap:8px;margin-top:10px" },
+    el("button", { class: "btn go", style: "min-height:56px;min-width:200px", onclick: () => go(o.practice ? { g: "practice" } : {}) }, "Back to the stations"));
+  if (won) {
+    try { winSound(id, "A", 0, o.practice); } catch (e) {}
+    app.append(el("div", { class: "plate labl-result win" },
+      el("h3", {}, G.title + " · " + setName(G, d) + (o.practice ? " · PRACTICE" : "")),
+      el("h1", {}, G.winTitle),
+      el("div", { class: "labl-time" }, fmt(o.elapsed || 0)),
+      el("div", { class: "labl-time-lbl" }, "FINISH TIME"),
+      o.practice ? kp("Practice run: nothing counts.", "color:var(--bone-dim)") : el("div", { class: "labl-show" }, "SHOW THE BOARD MEMBER"),
+      note ? kp(note, "color:var(--bone-dim)") : "", back));
+  } else {
+    if (!o.quiet) (SFX[o.sfx] || SFX.fail)();
+    const F = LABL_FAIL[id] || { title: G.failTitle, line: "The station locks for a moment." };
+    const until = o.applied && o.applied.until;
+    const big = el("div", { class: "labl-time red" }, "");
+    const tick = () => { const left = until ? (until - Date.now()) / 1000 : 0; if (left <= 0) { big.textContent = "OPEN"; big.classList.add("ok"); return false; } big.textContent = fmt(left); return true; };
+    if (!o.practice) { tick(); const iv = setInterval(() => { if (!tick()) clearInterval(iv); }, 500); RT.push(iv); }
+    app.append(el("div", { class: "plate labl-result fail" },
+      el("div", { class: "labl-cause" }, LABL_CAUSE[o.cause] || LABL_CAUSE.other),
+      el("h1", {}, o.title || F.title),
+      kp(F.line, "font-size:calc(20px*var(--tx));line-height:1.4;max-width:48ch;margin:8px auto"),
+      o.practice ? kp("Practice run: no lockout.", "color:var(--bone-dim)") : el("div", {}, big, el("div", { class: "labl-time-lbl" }, "STATION LOCKED · THIS TABLET")),
+      !o.practice && MTAB() && typeof mtabClearBtn === "function" ? el("div", { style: "margin-top:8px" }, mtabClearBtn(() => (big.textContent = "CLEARED"))) : "",
+      back));
+  }
+  if (MTAB() && !o.practice) {
+    let t = 30; const n = el("p", { style: "text-align:center;font-family:var(--mono);font-size:calc(14px*var(--tx));color:var(--bone-dim)" }, "");
+    app.append(n);
+    const iv = setInterval(() => { t--; n.textContent = "> Back to the stations in " + t + "s."; if (t <= 0) { clearInterval(iv); go({}); } }, 1000); RT.push(iv);
+  }
+};
+/* ---- "I got tagged": step away with no lockout; the attempt is logged as tagged ---- */
+const EP_play = play;
+play = function (id, d, practice, opts) {
+  const r = EP_play(id, d, practice, opts);
+  const b = el("button", { class: "btn labl-tagged" }, "🏷 I got tagged", el("small", {}, "step away · no lockout · the station stays open"));
+  b.addEventListener("click", () => {
+    try { clearPending(); } catch (e) {}
+    stop();
+    if (typeof mtabLogAdd === "function") mtabLogAdd({ id, d, ok: 0, g: "", s: 0, m: 0, pr: practice ? 1 : 0, tagged: 1 });
+    if (typeof toast === "function") toast("Tagged. Step away; the station is open for the next player.");
+    SFX.click();
+    go(practice ? { g: "practice" } : {});
+  });
+  app.append(b);
+  return r;
+};
 
 /* ---- Scoreboard (player-facing, mode "8") ---- */
 function lablBoard() {

@@ -65,6 +65,19 @@ PATCHES_ALL = getattr(patches, "PATCHES_ALL", [])
 for old, new in PATCHES_ALL:
     if old not in out: print("PATCH_ALL missing:", old[:80]); sys.exit(1)
     out = out.replace(old, new)
+# ---- regex patches (every match) and scoped patches (inside one GAMES.<id> module only)
+import re as _re
+for pat, repl in getattr(patches, "PATCHES_RE", []):
+    out, n = _re.subn(pat, repl, out)
+    if not n: print("PATCH_RE missing:", pat[:80]); sys.exit(1)
+for game, old, new in getattr(patches, "PATCHES_SCOPED", []):
+    a = out.find("\nGAMES." + game + " = {")
+    if a < 0: print("PATCH_SCOPED: no module", game); sys.exit(1)
+    b = out.find("\nGAMES.", a + 1)
+    if b < 0: b = len(out)
+    seg = out[a:b]
+    if old not in seg: print("PATCH_SCOPED missing in", game + ":", old[:80]); sys.exit(1)
+    out = out[:a] + seg.replace(old, new) + out[b:]
 print('applied', len(patches.PATCHES), 'patches')
 
 tmp = HERE/'_pre_terms.html'

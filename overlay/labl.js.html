@@ -27,7 +27,8 @@ function lablCfg() {
     setup: !!c.setup,                  // first-run done
     persist: c.persist || "",          // navigator.storage.persist() result: yes / no / na
     gear: c.gear || {},                // per-mode prop overrides (Phase 3)
-    everyday: c.everyday || null       // every-day packing list override
+    everyday: c.everyday || null,      // every-day packing list override
+    mg: c.mg === "story" ? "story" : "arena"   // Mission Tablet timing profile outside the arena (Phase 4)
   };
 }
 function lablCfgSet(patch) {
@@ -301,6 +302,7 @@ function lablRosterTab(say) {
 /* mini-games: on/off, Hard setting, log */
 function lablGamesTab(say) {
   const C = lablCfg(), ids = orderedIds();
+  const prof = el("button", { class: "btn small labl-chip" + (C.mg === "story" ? "" : " on"), onclick: () => { lablCfgSet({ mg: C.mg === "story" ? "arena" : "story" }); route(); } }, C.mg === "story" ? "Story timing" : "Arena timing");
   const hard = el("input", { type: "checkbox" }); hard.checked = C.hard;
   hard.addEventListener("change", () => { lablCfgSet({ hard: hard.checked }); say("Hard setting " + (hard.checked ? "offered" : "hidden") + " on the tablet."); });
   const rows = ids.map(id => {
@@ -316,10 +318,11 @@ function lablGamesTab(say) {
     plate(el("h2", {}, "Mini-games on the Mission Tablet"),
       kp("Switch any game off for the day. Games that need extra phones or a second screen start OFF. Every game plays at Standard; tick the box to also offer Hard.", "color:var(--bone-dim)"),
       el("label", { class: "labl-chk" }, hard, "Offer the Hard setting"),
+      el("div", { class: "row", style: "gap:10px;align-items:center;margin:6px 0" }, el("span", { class: "labl-lbl2", style: "margin:0" }, "Timing outside the arena"), prof, kp("Arena: short games (about 60 s Standard, 45 s Hard), the 8 arena fits only. Story: EP's full games, everything but the multi-device three. In the arena, each mode block's chip decides.", "color:var(--bone-dim);font-size:calc(13px*var(--tx));margin:0")),
       el("div", { class: "labl-roster" }, ...rows)),
     plate(el("h2", {}, "Tablet log · newest first"),
       el("div", { class: "labl-log" }, ...(L.length ? L.map(r => el("div", { style: "color:" + (r.pr ? "var(--bone-dim)" : r.ok ? "var(--ph)" : "var(--red)") },
-        new Date(r.t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) + " · " + ((GAMES[r.id] || {}).title || r.id) + " · " + (GAMES[r.id] ? setName(GAMES[r.id], r.d) : "") + " · " + (r.pr ? "practice · " : "") + (r.ok ? "WIN " + r.g : "FAIL") + " · " + fmt(r.s || 0))) : [kp("No runs yet.", "color:var(--bone-dim)")])),
+        new Date(r.t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) + " · " + ((GAMES[r.id] || {}).title || r.id) + " · " + (GAMES[r.id] ? setName(GAMES[r.id], r.d) : "") + " · " + (r.pr ? "practice · " : "") + (r.tagged ? "TAGGED" : r.ok ? "WIN" : "FAIL") + " · " + fmt(r.s || 0))) : [kp("No runs yet.", "color:var(--bone-dim)")])),
       el("div", { class: "row", style: "gap:6px;margin-top:8px" },
         el("button", { class: "btn small", onclick: () => { mtabLogClear(); route(); } }, "Clear the log"),
         el("button", { class: "btn small", onclick: () => { mtabClearLocks(); say("Lockouts cleared."); } }, "Clear lockouts"))));
@@ -933,6 +936,176 @@ function lablGearSettings(say) {
   return el("div", {}, el("label", { class: "labl-lbl" }, "Props for a mode (one per line, “Item × 2”)", sel, ta), el("div", { class: "row", style: "gap:8px" }, saveG, resetG),
     el("label", { class: "labl-lbl", style: "margin-top:12px" }, "Every day", ev), saveE);
 }
+
+/* ============ MINI-GAMES (Phase 4) ============
+   The LABL look inside every game, arena wording on every fail, one lockout rule (30 s Standard / 60 s Hard, this tablet
+   only), finish time instead of grades, two timing profiles (arena / story) and an "I got tagged" exit. */
+/* ---- palette: the chrome palette every canvas reads (PH / TC) becomes navy + orange; no night or red-light modes ---- */
+const LABL_PH = { bg: "#0b1740", bg1: "#172b74", grid: "rgba(240,120,32,.10)", ph: "#f07820", ph2: "#ff9a4a", phd: "#9a4d14", phdd: "#3a2410", am: "#ffd36a", amd: "#8a5a1c", rd: "#ff5a4e", rdd: "#7a1712", bone: "#f4f6fb", steel: "#2a4190", cy: "#6fd8ff" };
+Object.assign(PH, LABL_PH); Object.assign(PH_BASE, LABL_PH);
+applyPH = function () { Object.assign(PH, LABL_PH); };
+lightNow = () => "day";
+tcMode = () => "day";
+TC = () => LABL_PH;
+const lablCanvasBG = function (g, W, H, step = 10) {
+  const gr = g.createRadialGradient(W / 2, H / 2, 4, W / 2, H / 2, Math.max(W, H) * 0.75);
+  gr.addColorStop(0, LABL_PH.bg1); gr.addColorStop(1, LABL_PH.bg);
+  g.fillStyle = gr; g.fillRect(0, 0, W, H);
+  g.strokeStyle = LABL_PH.grid; g.lineWidth = 0.4; g.beginPath();
+  for (let x = step; x < W; x += step) { g.moveTo(x, 0); g.lineTo(x, H); }
+  for (let y = step; y < H; y += step) { g.moveTo(0, y); g.lineTo(W, y); }
+  g.stroke();
+};
+crtBG = lablCanvasBG; tcBG = lablCanvasBG;
+/* literal EP colors are translated as they're set on a canvas: near-blacks → navy, phosphor greens → orange, amber → gold.
+   Game colors with a meaning (the wire legend's RED / GREEN / BLUE, the yellow of a warning) are left alone. */
+const LABL_CMAP = {
+  "#000": "#0b1740", "#000000": "#0b1740", "#050505": "#0b1740", "#07090a": "#0b1740", "#020604": "#0b1740", "#031004": "#0b1740", "#020503": "#0b1740", "#030805": "#0b1740",
+  "#111": "#101f52", "#111111": "#101f52", "#141414": "#101f52", "#1d2226": "#172b74", "#2e3438": "#203880", "#3b4247": "#2a4190", "#4d585e": "#2a4190", "#5d666c": "#3b55b0", "#0b1c10": "#172b74", "#08170d": "#172b74", "#0a1a0f": "#172b74",
+  "#8dff8a": "#f07820", "#a8ffa4": "#ff9a4a", "#57c95a": "#ff9a4a", "#8ef08a": "#ff9a4a", "#2e7a36": "#9a4d14", "#6fcf74": "#c86418", "#123019": "#3a2410", "#3a8a40": "#9a4d14", "#4f8f55": "#9a4d14",
+  "#5c6a62": "#3b55b0", "#3f4a44": "#2a4190", "#2a3236": "#203880", "#1c2420": "#172b74", "#8b979d": "#8fa3e0", "#b9c7cf": "#c9d4f2", "#d6ffd0": "#ffd36a",
+  "#ffb347": "#ffd36a", "#ffc56b": "#ffd36a", "#8a5a1c": "#8a5a1c", "#ff4b3e": "#ff5a4e", "#ff6a5e": "#ff5a4e", "#d8e6cf": "#f4f6fb", "#b9c2b4": "#aab6dc", "#d8d2c0": "#e8ecf7", "#c9d3d6": "#e8ecf7", "#d4d9dd": "#e8ecf7"
+};
+const LABL_CCACHE = {};
+function lablColor(v) {
+  if (typeof v !== "string") return v;
+  const k = v.toLowerCase();
+  if (LABL_CCACHE[k] !== undefined) return LABL_CCACHE[k];
+  let out = LABL_CMAP[k];
+  if (!out) {
+    const m = k.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+))?\s*\)$/);
+    if (m) {
+      const r = +m[1], g = +m[2], b = +m[3], a = m[4] == null ? "" : "," + m[4];
+      if (r === 141 && g === 255 && b === 138) out = "rgba(240,120,32" + a + ")";        // phosphor glow
+      else if (r === 255 && g === 179 && b === 71) out = "rgba(255,211,106" + a + ")";   // amber glow
+      else if (r === 255 && g === 75 && b === 62) out = "rgba(255,90,78" + a + ")";      // fail red glow
+      else if (r === 0 && g === 0 && b === 0 && m[4] != null && +m[4] >= 0.6) out = "rgba(11,23,64" + a + ")"; // heavy black shade
+    }
+  }
+  LABL_CCACHE[k] = out || v;
+  return out || v;
+}
+(function () {
+  const proto = CanvasRenderingContext2D.prototype;
+  ["fillStyle", "strokeStyle", "shadowColor"].forEach(k => {
+    const d = Object.getOwnPropertyDescriptor(proto, k); if (!d || !d.set) return;
+    Object.defineProperty(proto, k, { configurable: true, enumerable: d.enumerable, get: d.get, set(v) { d.set.call(this, lablColor(v)); } });
+  });
+  const acs = CanvasGradient.prototype.addColorStop;
+  CanvasGradient.prototype.addColorStop = function (o, c) { return acs.call(this, o, lablColor(c)); };
+})();
+
+/* ---- timing profiles ---- */
+const LABL_MG_CAP = { 1: 60, 2: 45 };
+function lablMgProfile() {
+  if (typeof arenaOn === "function" && arenaOn()) { const it = lablCurItem(); return it && it.mg === "story" ? "story" : "arena"; }
+  return lablCfg().mg === "story" ? "story" : "arena";
+}
+function lablMgTime(arr, d) { const t = arr[d] != null ? arr[d] : arr[arr.length - 1]; return lablMgProfile() === "arena" ? Math.min(t, LABL_MG_CAP[d === 2 ? 2 : 1]) : t; }
+function lablMgV(story, arena, d) { return (lablMgProfile() === "arena" ? arena : story)[d]; }
+const LABL_ARENA_GAMES = ["smash", "heave", "lock", "wire", "stack", "bypass", "tune", "pipe"];
+const LABL_MULTI_GAMES = ["patrol", "bunker", "defuse"];
+/* which stations the tablet offers: arena profile = the 8 arena fits; story = everything but the multi-device three; the Board Member's on/off list applies on top */
+mtabStations = function () {
+  const off = lablCfg().gamesOff, st = mtabCfg().st, prof = lablMgProfile();
+  return orderedIds().filter(id => !off.includes(id) && (prof === "arena" ? LABL_ARENA_GAMES.includes(id) : !LABL_MULTI_GAMES.includes(id)) && (!st.length || st.includes(id)));
+};
+
+/* ---- one lockout rule: a fail locks this station on this tablet for 30 s (Standard) or 60 s (Hard). No jams, no out-of-play, no strikes ---- */
+Object.keys(FAIL_RULES).forEach(id => { FAIL_RULES[id] = { 1: { scope: "all" }, 2: { scope: "all" } }; });
+strikeNo = () => 1;   // lockFor / lockDefault / winLockFor are const in EP: patched in patches.py
+applyFail = function (id, d) {
+  const L = lkGet(); L[id] = L[id] || { all: {}, sq: {} };
+  const until = Date.now() + lockFor(GAMES[id], d) * 1000;
+  L[id].all = { until, by: "tablet", t: Date.now() };
+  lkSet(L);
+  return { scope: "all", until, rule: {}, strike: 1, out3: 0 };
+};
+/* ---- fail wording: arena language, every game ---- */
+const LABL_CAUSE = { time: "⏱ CLOCK RAN OUT", mistakes: "✖ TOO MANY SLIPS", abort: "■ WALKED AWAY", cut: "⏻ SCREEN LOST", other: "✖ NO GOOD", lockonly: "⏻ RUN ENDED" };
+const LABL_FAIL = {
+  pipe:    { title: "Line still dead",      line: "The air line never primed. Clear the station: it's locked for a moment." },
+  term:    { title: "Password held",        line: "Too many wrong guesses and the screen locked itself. Step off and let it cool down." },
+  lock:    { title: "Pick snapped",         line: "The last pick broke off in the lock. The station's locked for a moment; your team can try again after." },
+  bypass:  { title: "Circuit tripped",      line: "The breaker popped and the panel went dark. Give it a moment to reset." },
+  suture:  { title: "Vest still torn",      line: "The patch didn't hold. The repair station locks for a moment." },
+  seal:    { title: "Gate code rejected",   line: "Wrong code one time too many. The keypad is locked for a moment." },
+  wire:    { title: "Panel shorted",        line: "A wire went to the wrong lamp and the panel tripped. It resets in a moment." },
+  defuse:  { title: "Charge went off",      line: "The charge blew. The station is down for a moment while the smoke clears." },
+  tune:    { title: "Signal lost",          line: "The signal slipped away before the upload filled. The radio locks for a moment." },
+  stack:   { title: "Stack collapsed",      line: "The plates toppled. The armor bench locks for a moment." },
+  mortar:  { title: "Mortar off target",    line: "Out of shells with no hit on the barrel. The gun's locked for a moment." },
+  vaccine: { title: "Dye pack spoiled",     line: "The mix went wrong and the batch is useless. The bench locks for a moment." },
+  triage:  { title: "Triage missed",        line: "Too many calls went wrong. The triage station locks for a moment." },
+  nav:     { title: "Lost them",            line: "The team on the radio never found the route. The station locks for a moment." },
+  fire:    { title: "Smoke, no fire",       line: "The signal never caught. The fire pit locks for a moment." },
+  ruck:    { title: "Pack blew out",        line: "Packed wrong and the seam split. The gear bench locks for a moment." },
+  heave:   { title: "Shutter slammed",      line: "You lost the rhythm and the shutter came down. It locks for a moment; try again with your partner after." },
+  surgery: { title: "Patient lost",         line: "Too slow on the table. The medic station locks for a moment." },
+  patrol:  { title: "Spotted",              line: "The patrol saw you cross. The station locks for a moment." },
+  smash:   { title: "Lock held",            line: "Every swing missed the sweet spot. The lock's still shut, and the station locks for a moment." },
+  bunker:  { title: "Door seized",          line: "The team pulled the wrong order and the door jammed. It resets in a moment." }
+};
+Object.entries(LABL_FAIL).forEach(([id, f]) => { if (GAMES[id]) GAMES[id].failTitle = f.title; });
+/* the intro's "If you fail" fold: the arena story and the lockout, nothing else */
+penaltyPreview = function (id, d) {
+  const F = LABL_FAIL[id] || {};
+  return el("details", { class: "fold", open: "" }, el("summary", { style: "color:var(--red)" }, "If you fail"),
+    el("div", { style: "font-family:var(--px);font-size:calc(16px*var(--tx));line-height:1.4;margin:4px 0" }, (F.title ? F.title + ". " : "") + "The station locks on this tablet for " + fmt(lockFor(GAMES[id], d)) + " (" + (d === 2 ? "Hard" : "Standard") + "). Nothing else. Tagged while playing? Tap I got tagged and step away: no lockout."));
+};
+/* ---- the result screens: finish time big on a win, the arena fail story and the lockout countdown on a fail ---- */
+result = function (id, d, won, note, o = {}) {
+  app.innerHTML = "";
+  const G = GAMES[id], RT = [];
+  cleanup = () => RT.forEach(clearInterval);
+  const back = el("div", { class: "row", style: "justify-content:center;gap:8px;margin-top:10px" },
+    el("button", { class: "btn go", style: "min-height:56px;min-width:200px", onclick: () => go(o.practice ? { g: "practice" } : {}) }, "Back to the stations"));
+  if (won) {
+    try { winSound(id, "A", 0, o.practice); } catch (e) {}
+    app.append(el("div", { class: "plate labl-result win" },
+      el("h3", {}, G.title + " · " + setName(G, d) + (o.practice ? " · PRACTICE" : "")),
+      el("h1", {}, G.winTitle),
+      el("div", { class: "labl-time" }, fmt(o.elapsed || 0)),
+      el("div", { class: "labl-time-lbl" }, "FINISH TIME"),
+      o.practice ? kp("Practice run: nothing counts.", "color:var(--bone-dim)") : el("div", { class: "labl-show" }, "SHOW THE BOARD MEMBER"),
+      note ? kp(note, "color:var(--bone-dim)") : "", back));
+  } else {
+    if (!o.quiet) (SFX[o.sfx] || SFX.fail)();
+    const F = LABL_FAIL[id] || { title: G.failTitle, line: "The station locks for a moment." };
+    const until = o.applied && o.applied.until;
+    const big = el("div", { class: "labl-time red" }, "");
+    const tick = () => { const left = until ? (until - Date.now()) / 1000 : 0; if (left <= 0) { big.textContent = "OPEN"; big.classList.add("ok"); return false; } big.textContent = fmt(left); return true; };
+    if (!o.practice) { tick(); const iv = setInterval(() => { if (!tick()) clearInterval(iv); }, 500); RT.push(iv); }
+    app.append(el("div", { class: "plate labl-result fail" },
+      el("div", { class: "labl-cause" }, LABL_CAUSE[o.cause] || LABL_CAUSE.other),
+      el("h1", {}, o.title || F.title),
+      kp(F.line, "font-size:calc(20px*var(--tx));line-height:1.4;max-width:48ch;margin:8px auto"),
+      o.practice ? kp("Practice run: no lockout.", "color:var(--bone-dim)") : el("div", {}, big, el("div", { class: "labl-time-lbl" }, "STATION LOCKED · THIS TABLET")),
+      !o.practice && MTAB() && typeof mtabClearBtn === "function" ? el("div", { style: "margin-top:8px" }, mtabClearBtn(() => (big.textContent = "CLEARED"))) : "",
+      back));
+  }
+  if (MTAB() && !o.practice) {
+    let t = 30; const n = el("p", { style: "text-align:center;font-family:var(--mono);font-size:calc(14px*var(--tx));color:var(--bone-dim)" }, "");
+    app.append(n);
+    const iv = setInterval(() => { t--; n.textContent = "> Back to the stations in " + t + "s."; if (t <= 0) { clearInterval(iv); go({}); } }, 1000); RT.push(iv);
+  }
+};
+/* ---- "I got tagged": step away with no lockout; the attempt is logged as tagged ---- */
+const EP_play = play;
+play = function (id, d, practice, opts) {
+  const r = EP_play(id, d, practice, opts);
+  const b = el("button", { class: "btn labl-tagged" }, "🏷 I got tagged", el("small", {}, "step away · no lockout · the station stays open"));
+  b.addEventListener("click", () => {
+    try { clearPending(); } catch (e) {}
+    stop();
+    if (typeof mtabLogAdd === "function") mtabLogAdd({ id, d, ok: 0, g: "", s: 0, m: 0, pr: practice ? 1 : 0, tagged: 1 });
+    if (typeof toast === "function") toast("Tagged. Step away; the station is open for the next player.");
+    SFX.click();
+    go(practice ? { g: "practice" } : {});
+  });
+  app.append(b);
+  return r;
+};
 
 /* ---- Scoreboard (player-facing, mode "8") ---- */
 function lablBoard() {

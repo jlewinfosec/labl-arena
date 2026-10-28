@@ -162,3 +162,28 @@ PATCHES += [
   ('const newSet = () => (setLeft = shuffle(KINDS.filter(k => pools[k].length)));',
    'const newSet = () => (setLeft = pools.z.length ? shuffle(KINDS.filter(k => pools[k].length)) : shuffle(["o", "e", Math.random() < 0.5 ? "o" : "e"].filter(k => pools[k].length)));'),
 ]
+
+# --- Phase 4: mini-game timing profiles. Every game's clock goes through lablMgTime (arena: 60 s Standard / 45 s Hard cap;
+#     story: EP's length). The best arena fits also get fewer steps (lablMgV(story, arena, d)).
+PATCHES_RE = [
+  (r'TIME = (\[0(?:, \d+){2,3}\])\[d\]', r'TIME = lablMgTime(\1, d)'),
+]
+PATCHES_SCOPED = [
+  ('lock',  '[0, 6, 8][d]',   'lablMgV([0, 6, 8], [0, 4, 4], d)'),      # pins
+  ('wire',  '[0, 3, 4][d]',   'lablMgV([0, 3, 4], [0, 2, 2], d)'),      # panels
+  ('stack', '[0, 10, 12][d]', 'lablMgV([0, 10, 12], [0, 6, 6], d)'),    # plates
+  ('smash', '[0, 3, 5][d]',   'lablMgV([0, 3, 5], [0, 3, 4], d)'),      # hits
+  ('pipe',  '[0, 30, 22][d]', 'lablMgV([0, 30, 22], [0, 18, 14], d)'),  # pipes to lay
+  ('bypass','[0, 35, 20][d]', 'lablMgV([0, 35, 20], [0, 25, 15], d)'),  # pairs before a shuffle
+]
+# --- Phase 4: one lockout rule (30 s Standard / 60 s Hard), no win lock; these are const bindings in EP
+PATCHES += [
+  ('const lockFor = (G, d) => {\nconst id = idOf(G),', 'const lockFor = (G, d) => d === 2 ? 60 : 30; // LABL\nconst EP_lockFor = (G, d) => {\nconst id = idOf(G),'),
+  ('const winLockFor = id => {\nconst o = STATION_LOCKS[id],', 'const winLockFor = id => 0; // LABL: the other side plays right after a win\nconst EP_winLockFor = id => {\nconst o = STATION_LOCKS[id],'),
+]
+PATCHES += [
+  ('repeating-linear-gradient(90deg,#9bd45a 0 6px,#4f7a2c 6px 8px)', 'repeating-linear-gradient(90deg,#f07820 0 6px,#9a4d14 6px 8px)'),  # Hold the signal: the upload bar
+]
+PATCHES_SCOPED += [
+  ('tune', 'GC.GREEN', '"#ffd36a"'),   # a locked-on signal glows gold, not CRT green
+]
