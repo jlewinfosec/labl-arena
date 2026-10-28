@@ -38,7 +38,7 @@ node draw.js                            # team draw: 30 players x 20 draws balan
 
 ## Storage keys (localStorage)
 
-`ep_cfg` (config, PIN, roster under `.roster` with `age` Y/T/A per player, LABL settings under `.labl`), `ep_bb` (rounds,
+`ep_cfg` (config, PIN, roster under `.roster` with `age` Y/T/A per player, LABL settings under `.labl`), `ep_bb` (rounds — each with `how` time/elim/obj/mg/forfeit/other, `st` {playerId: [tags, outs]} and an `ed` edit history when edited —
 awards), `ep_bbteams` (sides, plus `pool` / `bl` blaster S/F/B / `day` / `drawIdx` for the LABL draw), `ep_bbplan`, `ep_bbrun`, `ep_bbterm*`, `ep_mtab`, `ep_tablog`, `ep_lk`,
 `ep_lock_<game>`. Keys keep their `ep_` prefix on purpose: renaming them would orphan saved data.
 

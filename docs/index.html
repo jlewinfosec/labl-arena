@@ -1401,6 +1401,32 @@ body.labl .labl-runtools{gap:8px;margin:8px 0;flex-wrap:wrap}
 body.labl .labl-walkin{font-size:calc(20px*var(--tx));flex:1;max-width:320px}
 body.labl .labl-walk .labl-in{font-size:calc(24px*var(--tx));min-height:60px}
 body.labl .labl-draw h1{font-size:calc(34px*var(--tx))}
+/* Phase 2: rules card, opening talk, how-it-ended chips, stats grid, round editor */
+body.labl .labl-rules-ov{align-items:flex-start;padding-top:2vh}
+body.labl .labl-rules{max-width:1100px;width:96vw}
+body.labl .labl-rules-mode{font-size:calc(56px*var(--tx));line-height:1;margin:4px 0 10px}
+body.labl .labl-rules-text{font-family:var(--px);font-size:calc(30px*var(--tx));line-height:1.35;color:var(--bone);padding:12px 0;border-top:3px solid var(--orange);border-bottom:1px solid var(--edge)}
+body.labl .labl-rules-facts{display:flex;gap:18px;margin:12px 0;flex-wrap:wrap}
+body.labl .labl-rules-facts>div{display:flex;flex-direction:column;align-items:flex-start;min-width:120px}
+body.labl .labl-rules-facts b{font-family:var(--hd);font-size:calc(44px*var(--tx));line-height:1;color:var(--gold)}
+body.labl .labl-rules-facts span{font-family:var(--px);font-size:calc(14px*var(--tx));color:var(--bone-dim);text-transform:uppercase;letter-spacing:.06em}
+body.labl .labl-rules-win{font-family:var(--hd);font-size:calc(24px*var(--tx));color:var(--orange);text-transform:uppercase}
+body.labl .labl-rules-btn{margin:0 0 6px;font-size:calc(13px*var(--tx));min-height:34px}
+body.labl .labl-talk{border:2px solid var(--orange);border-radius:10px;padding:10px 12px;margin:8px 0}
+body.labl .labl-talk-text{font-family:var(--px);font-size:calc(22px*var(--tx));line-height:1.4;color:var(--bone)}
+body.labl .labl-lbl2{font-family:var(--mono);font-size:calc(13px*var(--tx));color:var(--orange);letter-spacing:.08em;text-transform:uppercase;margin:10px 0 4px}
+body.labl .labl-how{gap:6px;flex-wrap:wrap}
+body.labl .labl-stat{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:4px}
+body.labl .labl-stat-row{display:flex;align-items:center;gap:10px;padding:4px 8px;border-radius:8px;background:rgba(255,255,255,.05);min-height:52px}
+body.labl .labl-stat-row .nm{flex:1;min-width:90px;font-family:var(--hd);text-transform:uppercase;font-size:calc(18px*var(--tx));overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+body.labl .labl-stat-c{display:flex;align-items:center;gap:4px}
+body.labl .labl-stat-c small{font-family:var(--px);color:var(--bone-dim);width:34px;text-align:right;font-size:calc(12px*var(--tx))}
+body.labl .labl-stat-c .btn.small{min-width:44px;min-height:44px;font-size:calc(22px*var(--tx));padding:0}
+body.labl .labl-stat-c b{font-family:var(--hd);font-size:calc(26px*var(--tx));min-width:30px;text-align:center;color:var(--gold)}
+body.labl .labl-confirm{margin:8px 0}
+body.labl .labl-edit{max-width:980px;width:96vw}
+body.labl .labl-edit .labl-stat{grid-template-columns:repeat(auto-fill,minmax(400px,1fr))}
+body.labl .labl-edit{max-height:92vh;overflow-y:auto}
 </style>
 
 </head>
@@ -1411,7 +1437,7 @@ body.labl .labl-draw h1{font-size:calc(34px*var(--tx))}
 <script>
 /* ============ LABL PRE-SHIMS: globals the dropped EP modules used to provide ============
    Kept deliberately small and honest: each one returns the "nothing's there" value the EP code already handles. */
-window.LABL = { version: "0.3.0", name: "LABL Arena" };
+window.LABL = { version: "0.4.0", name: "LABL Arena" };
 var NATIVE = { on: false, plugin: () => null, haptic: () => {} };
 var EPSYNC = { on: false, isMain: () => true, main: () => true };
 var RAD_REMOTE = null, WX_REMOTE = null, FIELD_REMOTE = null, ALERT_REMOTE = null, BRK_REMOTE = null, BC_REMOTE = null;
@@ -39202,7 +39228,7 @@ return box;
 }
 const notes = {
 brief:
-"Safety first: blaster held overhead = out of play, a Board Member's call stops everything, eye protection on in the arena. Honor your hits. Then teams and today's first modes.",
+"",
 sweep:
 "The game is stopped. Everyone picks up darts. Most darts = 1 temporary League Point (a Board Member gives it at LABL HQ: Board Member › Today › Give temporary SP).",
 lunch: "60 minutes. Everyone back to LABL HQ. Sync the rounds while the tablet has the Wi-Fi.",
@@ -39357,7 +39383,7 @@ BBR.save(run);
 }
 // ---- the clock
 // D-248: after a save, Start waits for the referee's Reset done (or BB_DAY.resetMaxSec)
-const resetWait = run.savedAt && !run.resetDone && Date.now() - run.savedAt < BB_DAY.resetMaxSec * 1000;
+const resetWait = false; // LABL: the Board Member taps Start when ready
 // opts.at: start at this time (a shared start time with zone or hill phones); opts.follow: the terminal's clock is in charge
 const startClock = opts => {
 opts = opts && typeof opts === "object" && !opts.type ? opts : {}; // a click event is not an option
@@ -41577,6 +41603,8 @@ function lablSettingsTab(say) {
   // modes on/off
   const off = new Set(lablCfg().modesOff);
   const modeRows = BB_MODES.map(m => { const cb = el("input", { type: "checkbox" }); cb.checked = !off.has(m); cb.addEventListener("change", () => { const o = new Set(lablCfg().modesOff); cb.checked ? o.delete(m) : o.add(m); lablCfgSet({ modesOff: [...o] }); }); return el("label", { class: "labl-chk" }, cb, m + (BB_ZOMBIE_MODES.includes(m) ? " · zombie" : "")); });
+  const statOn = new Set(lablStatModes());
+  const statRows = BB_MODES.map(m => { const cb = el("input", { type: "checkbox" }); cb.checked = statOn.has(m); cb.addEventListener("change", () => { const o = new Set(lablStatModes()); cb.checked ? o.add(m) : o.delete(m); lablCfgSet({ statModes: [...o] }); }); return el("label", { class: "labl-chk" }, cb, m); });
   // backup / restore
   const bk = el("button", { class: "btn go" }, "⬇ Backup (JSON)");
   bk.addEventListener("click", () => { const f = lablBackupFile(); lablDownload(f.name, f.text, f.type); say("Backup saved to the tablet's downloads. Copy it somewhere safe."); });
@@ -41594,7 +41622,9 @@ function lablSettingsTab(say) {
       kp("Storage: " + persistTxt, "color:var(--bone-dim);margin-top:8px"),
       kp("LABL Arena version " + LABL.version + (location.protocol === "file:" ? " · opened as a file (not installed)" : PWA.reg ? " · installed app, works offline" : ""), "color:var(--bone-dim)")),
     plate(el("h2", {}, "Board Member PIN"), el("div", { class: "row", style: "gap:8px" }, p1, p2, pinB)),
+    plate(el("h2", {}, "Opening talk"), kp("Read out at the day's first item. The default covers the honor code, eye protection, loaner gear and how a Board Member stops play.", "color:var(--bone-dim)"), lablTalkCard(say)),
     plate(el("h2", {}, "Game modes offered"), kp("Untick a mode to hide it from the Day plan and the round log.", "color:var(--bone-dim)"), el("div", { class: "labl-modes" }, ...modeRows)),
+    plate(el("h2", {}, "Tags and outs decide the winner in…"), kp("In these modes the winner step is the tags/outs grid: most tags, then fewest outs, and the Board Member confirms. Elsewhere the grid is optional.", "color:var(--bone-dim)"), el("div", { class: "labl-modes" }, ...statRows)),
     plate(el("h2", {}, "Screen & sound"), screenSoundFold()));
 }
 
@@ -41828,6 +41858,223 @@ function lablWalkIn(say) {
     el("div", { class: "row", style: "gap:8px;margin-top:8px" }, el("button", { class: "btn", style: "flex:1;min-height:56px", onclick: close }, "Cancel"), add));
   ov.append(box); document.body.append(ov); setTimeout(() => nm.focus(), 60);
 }
+
+/* ============ RUN SCREEN (Phase 2) ============
+   No reset gate (patched out). Before round 1 of a block: a full-screen rules card. The briefing shows the editable opening
+   talk. Every logged round records how it ended (`how`) and, in stat modes, per-player tags and outs (`st`). Rounds can be
+   edited afterwards (`ed` history). */
+const LABL_HOW = [["time", "Time"], ["elim", "Elimination"], ["obj", "Objective"], ["mg", "Mini-game"], ["forfeit", "Forfeit"], ["other", "Other"]];
+const LABL_HOW_LABEL = Object.fromEntries(LABL_HOW);
+const LABL_TALK_DEFAULT = "Welcome to the Louisiana Blaster League. Honor code: you call your own hits, every time. A hit anywhere counts. Eye protection stays on from the moment you step into the arena until you step out. No eyewear? Borrow a pair from the loaner bin at the tablet, and a loaner blaster is there too. When a Board Member calls HOLD, everyone stops and lowers their blaster; play starts again on the countdown. Have fun, be loud, be fair.";
+const LABL_STAT_DEFAULT = ["Pistol-Only 3-15 FFA", "Banding", "2s Round Robin", "Single Shot 2s Round Robin", "Round Robin (Tournament)", "Round Robin Cowboys", "Terminator", "FFA Resurgence Tag", "One Man Army", "Tag Confirmed"];
+function lablTalk() { const c = (loadCfg() || {}).labl || {}; return typeof c.talk === "string" && c.talk.trim() ? c.talk : LABL_TALK_DEFAULT; }
+function lablStatModes() { const c = (loadCfg() || {}).labl || {}; return Array.isArray(c.statModes) ? c.statModes : LABL_STAT_DEFAULT; }
+const lablIsStatMode = mode => lablStatModes().includes(mode);
+
+/* ---- opening talk on the briefing item ---- */
+function lablTalkCard(say) {
+  const card = el("div", { class: "labl-talk" });
+  const show = () => {
+    card.innerHTML = "";
+    const ta = el("textarea", { class: "labl-in", rows: "7" }, lablTalk());
+    const txt = el("div", { class: "labl-talk-text" }, lablTalk());
+    const edit = el("button", { class: "btn small" }, "✎ Edit the talk");
+    const save = el("button", { class: "btn small go", style: "display:none" }, "Save");
+    edit.addEventListener("click", () => { txt.replaceWith(ta); edit.style.display = "none"; save.style.display = ""; ta.focus(); });
+    save.addEventListener("click", () => { lablCfgSet({ talk: ta.value.trim().slice(0, 2000) }); SFX.good(); if (say) say("Opening talk saved."); show(); });
+    card.append(el("h3", {}, "Opening talk · read it out"), txt, el("div", { class: "row", style: "gap:8px;margin-top:6px" }, edit, save));
+  };
+  show();
+  return card;
+}
+const EP_bbRunBreak = bbRunBreak;
+bbRunBreak = function (it, run, row, unlocked, redraw, P) {
+  const box = EP_bbRunBreak(it, run, row, unlocked, redraw, P);
+  if (it.kind === "brief") { const h1 = box.querySelector("h1"); if (h1) h1.after(lablTalkCard()); }
+  return box;
+};
+
+/* ---- rules card before round 1 of every block (and a small Rules button during it) ---- */
+function lablRulesCard(it, onStart) {
+  const I = bbInfo(it.mode), P = BBP.get(), n = bbFt2Mode(it.mode) ? 3 : +it.n || 1;
+  const len = bbModeLen(it.mode, P, it), resp = bbModeResp(it.mode, P, false);
+  const win = ["rr1", "rr2", "rot1"].includes(I.help) ? "One bracket or rotation, logged once." : I.fmt === "ffa" ? "One winner: the last player standing (or the top of the count)." : bbFt2Mode(it.mode) ? "First side to 2 round wins takes the mode; round 3 only breaks a tie." : "Best of " + n + " rounds.";
+  const ov = el("div", { class: "modal labl-rules-ov", id: "labl-rules" }), box = el("div", { class: "modal-box plate labl-rules" }), close = () => ov.remove();
+  const go2 = el("button", { class: "btn go", style: "width:100%;min-height:72px;font-size:calc(24px*var(--tx));margin-top:12px" }, onStart ? "Rules read. Start the countdown ▶" : "Rules read ▶");
+  go2.addEventListener("click", () => { SFX.good(); close(); if (onStart) onStart(); });
+  box.append(el("h3", {}, "RULES · READ THEM OUT"), el("h1", { class: "labl-rules-mode" }, it.mode),
+    el("div", { class: "labl-rules-text" }, I.rules),
+    el("div", { class: "labl-rules-facts" },
+      el("div", {}, el("b", {}, bbSecs(len)), el("span", {}, "per round")),
+      el("div", {}, el("b", {}, resp ? resp + " s" : "—"), el("span", {}, resp ? "respawn" : "no respawn")),
+      el("div", {}, el("b", {}, I.k === "e" ? "ELIM" : I.k === "z" ? "ZOMBIE" : "OBJ"), el("span", {}, "mode type"))),
+    el("div", { class: "labl-rules-win" }, win), go2);
+  ov.append(box); return ov;
+}
+const EP_bbRunMode = bbRunMode;
+bbRunMode = function (it, run, P, T, Pl, unlocked, redraw, say, RT) {
+  const box = EP_bbRunMode(it, run, P, T, Pl, unlocked, redraw, say, RT);
+  if (!unlocked) return box;
+  const c = run.clk, fresh = !(c && c.t0) && (run.rnd || 1) === 1;
+  const startBtn = () => [...box.querySelectorAll("button")].find(b => /^▶ (Start round|Follow the terminal)/.test(b.textContent.trim()) && !b.disabled);
+  // a small Rules button next to the mode name (EP's fold stays too)
+  const h1 = box.querySelector("h1");
+  if (h1) h1.after(el("button", { class: "btn small labl-rules-btn", onclick: () => document.body.append(lablRulesCard(it, null)) }, "📖 Rules"));
+  if (fresh && run.rr !== it.id && !document.getElementById("labl-rules")) {
+    setTimeout(() => { if (!document.getElementById("labl-rules")) document.body.append(lablRulesCard(it, () => { run.rr = it.id; BBR.save(run); const b = startBtn(); if (b) b.click(); else route(); })); }, 0);
+  }
+  return box;
+};
+
+/* ---- how the round ended + the tags/outs grid ---- */
+let LABL_LOG = null;   // { key, how, st: {id: [tags, outs]} } for the round about to be logged
+const lablLogKey = run => EVENT_SALT + "|" + run.idx + "|" + (run.rnd || 1);
+function lablHowDefault(I, c) {
+  if (c && c.t0 && c.end && (c.end - c.t0 - (c.pz || 0)) >= (c.len || 300) * 1000 - 1500) return "time";
+  return I.k === "o" ? "obj" : "elim";
+}
+function lablHowChips(cur, onSet) {
+  return el("div", { class: "row labl-how" }, ...LABL_HOW.map(([k, l]) => { const b = el("button", { class: "btn small labl-chip" + (k === cur ? " on" : "") }, l); b.addEventListener("click", () => { SFX.click(); onSet(k); }); return b; }));
+}
+function lablStatGrid(ids, byId, st, onChange) {
+  const grid = el("div", { class: "labl-stat" });
+  const row = id => {
+    const v = st[id] || [0, 0];
+    const cell = (i, lab) => { const minus = el("button", { class: "btn small" }, "−"), plus = el("button", { class: "btn small" }, "+"), num = el("b", {}, String(v[i]));
+      minus.addEventListener("click", () => { v[i] = Math.max(0, v[i] - 1); st[id] = v; num.textContent = String(v[i]); onChange(); });
+      plus.addEventListener("click", () => { v[i] = v[i] + 1; st[id] = v; num.textContent = String(v[i]); onChange(); });
+      return el("span", { class: "labl-stat-c" }, el("small", {}, lab), minus, num, plus); };
+    return el("div", { class: "labl-stat-row" }, el("span", { class: "nm" }, byId[id] ? byId[id].n : id), cell(0, "tags"), cell(1, "outs"));
+  };
+  grid.append(...ids.map(row));
+  return grid;
+}
+/* most tags, then fewest outs; null when nobody has a tag or an out yet */
+function lablStatLeader(ids, st) {
+  const L = ids.filter(i => st[i] && (st[i][0] || st[i][1])).sort((a, b) => st[b][0] - st[a][0] || st[a][1] - st[b][1]);
+  if (!L.length) return null;
+  if (L.length > 1 && st[L[0]][0] === st[L[1]][0] && st[L[0]][1] === st[L[1]][1]) return { id: L[0], tie: true };
+  return { id: L[0], tie: false };
+}
+const EP_bbQuickLog = bbQuickLog;
+bbQuickLog = function (o) {
+  const box = EP_bbQuickLog(o);
+  const run = o.run, I = bbInfo(o.mode), S = o.S, P = o.P, byId = Object.fromEntries(P.map(x => [x.id, x]));
+  const parts = (o.pre && o.pre.parts) || (S ? [].concat(...S.map(t => t.m)) : P.map(x => x.id));
+  const key = lablLogKey(run);
+  if (!LABL_LOG || LABL_LOG.key !== key) LABL_LOG = { key, how: lablHowDefault(I, run.clk), st: {} };
+  const L = LABL_LOG, stat = lablIsStatMode(o.mode);
+  const top = el("div", { class: "labl-logtop" });
+  top.append(el("div", { class: "labl-lbl2" }, "How did it end?"), lablHowChips(L.how, v => { L.how = v; top.replaceWith(render()); }));
+  // the grid: open and in charge in stat modes, folded and optional elsewhere
+  const ids = parts.filter(i => byId[i]);
+  const confirm = el("div", { class: "labl-confirm" });
+  const refresh = () => {
+    confirm.innerHTML = "";
+    if (!stat) return;
+    const lead = lablStatLeader(ids, L.st);
+    if (!lead) { confirm.append(kp("Tap tags and outs; the leader shows up here to confirm.", "color:var(--bone-dim);font-size:calc(14px*var(--tx))")); return; }
+    // who to confirm: the player (one-winner modes) or their side (team modes)
+    let label, click;
+    if (S) {
+      const sum = t => t.m.reduce((a, i) => a + ((L.st[i] || [0])[0] || 0), 0), outs = t => t.m.reduce((a, i) => a + ((L.st[i] || [0, 0])[1] || 0), 0);
+      const order = S.map((t, i) => [i, sum(t), outs(t)]).sort((a, b) => b[1] - a[1] || a[2] - b[2]);
+      const ti = order[0][0], tied = order.length > 1 && order[0][1] === order[1][1] && order[0][2] === order[1][2];
+      label = (tied ? "Tied on tags: pick a side below, or confirm " : "Confirm: ") + S[ti].n + " won (" + order[0][1] + " tags)";
+      click = () => { const b = [...box.querySelectorAll("button")].find(x => x.textContent.trim().startsWith(S[ti].n + " WON")); if (b) b.click(); };
+    } else {
+      label = (lead.tie ? "Tied: pick below, or confirm " : "Confirm: ") + byId[lead.id].n + " won (" + L.st[lead.id][0] + " tags · " + L.st[lead.id][1] + " outs)";
+      click = () => { const b = [...box.querySelectorAll("button")].find(x => x.textContent.trim() === byId[lead.id].n + " won" || x.textContent.trim().startsWith(byId[lead.id].n + " ")); if (b) b.click(); };
+    }
+    confirm.append(el("button", { class: "btn go", style: "width:100%;min-height:72px;font-size:calc(22px*var(--tx))", onclick: click }, "✔ " + label));
+  };
+  const grid = lablStatGrid(ids, byId, L.st, refresh);
+  refresh();
+  const render = () => { const t = el("div", { class: "labl-logtop" }); t.append(el("div", { class: "labl-lbl2" }, "How did it end?"), lablHowChips(L.how, v => { L.how = v; t.replaceWith(render()); })); return t; };
+  const gridWrap = stat ? el("div", {}, el("div", { class: "labl-lbl2" }, "Tags and outs per player"), grid, confirm) : fold("Tags and outs (optional)", grid);
+  box.prepend(top, gridWrap);
+  if (stat) box.querySelectorAll("label").forEach(l => { if (/tags$/.test(l.textContent.trim())) l.style.display = "none"; });   // the per-team clicker boxes: the grid replaces them
+  return box;
+};
+/* every saved round carries how + the per-player stats from the grid */
+const EP_bbSaveRound = bbSaveRound;
+bbSaveRound = function (r) {
+  const run = BBR.get();
+  if (LABL_LOG && LABL_LOG.key === lablLogKey(run)) {
+    r.how = LABL_LOG.how;
+    const st = Object.fromEntries(Object.entries(LABL_LOG.st).filter(([, v]) => v[0] || v[1]));
+    if (Object.keys(st).length) { r.st = st; Object.assign(r, bbTagsFromStats(r.fmt === "teams" ? r.teams : null, r.p || [], st)); }
+    LABL_LOG = null;
+  }
+  return EP_bbSaveRound(r);
+};
+
+/* ---- edit a logged round (Rounds tab) ---- */
+function lablEditRound(r0) {
+  const r = JSON.parse(JSON.stringify(r0)), P = bbPlayers(), byId = Object.fromEntries(P.map(x => [x.id, x]));
+  const name = id => (r.nm && r.nm[id]) || (byId[id] || {}).n || id;
+  const ov = el("div", { class: "modal" }), box = el("div", { class: "modal-box plate labl-edit" }), close = () => ov.remove();
+  const body = el("div");
+  const draw = () => {
+    body.innerHTML = "";
+    const teams = r.fmt === "teams";
+    const all = teams ? [].concat(...r.teams.map(t => t.m)) : r.p || [];
+    // winner
+    const wrow = el("div", { class: "row", style: "gap:6px;flex-wrap:wrap" });
+    const wbtn = (lab, on, fn, col) => { const b = el("button", { class: "btn small" + (on ? " on" : ""), style: col && !on ? "border-color:" + col : "" }, lab); b.addEventListener("click", () => { fn(); draw(); }); return b; };
+    if (teams) { r.teams.forEach((t, i) => wrow.append(wbtn(t.n + " won", r.win === i, () => (r.win = i), BB_COL[t.col]))); wrow.append(wbtn("Draw", r.win === -1, () => (r.win = -1))); }
+    else all.forEach(id => wrow.append(wbtn(name(id), r.win === id, () => (r.win = id))));
+    body.append(el("div", { class: "labl-lbl2" }, "Winner"), wrow, el("div", { class: "labl-lbl2" }, "How it ended"), lablHowChips(r.how || "other", v => { r.how = v; draw(); }));
+    // who was on each team: tap a name to move it
+    if (teams) {
+      const trow = el("div", { class: "labl-teams2" }, ...r.teams.map((t, i) => el("div", { class: "labl-team " + t.col, style: "--tc:" + BB_COL[t.col] }, el("div", { class: "labl-team-h" }, el("b", {}, t.n), el("span", {}, String(t.m.length))),
+        el("div", { class: "labl-team-names" }, ...t.m.map(id => el("button", { class: "btn small", onclick: () => { t.m = t.m.filter(x => x !== id); r.teams[(i + 1) % r.teams.length].m.push(id); draw(); } }, name(id)))))));
+      const addSel = el("select", { class: "labl-in" }, el("option", { value: "" }, "Add a player who was there…"), ...P.filter(x => !all.includes(x.id)).map(x => el("option", { value: x.id }, x.n)));
+      addSel.addEventListener("change", () => { if (!addSel.value) return; const x = byId[addSel.value]; r.nm = r.nm || {}; r.sq = r.sq || {}; r.nm[x.id] = x.n; r.sq[x.id] = x.sq; r.teams[0].m.push(x.id); draw(); });
+      body.append(el("div", { class: "labl-lbl2" }, "Who played (tap a name to move it)"), trow, addSel);
+    }
+    // tags and outs
+    r.st = r.st || {};
+    body.append(el("div", { class: "labl-lbl2" }, "Tags and outs"), lablStatGrid(all, Object.fromEntries(all.map(id => [id, { n: name(id) }])), r.st, () => {}));
+    // disputed + note
+    const dsp = el("input", { type: "checkbox" }); dsp.checked = !!r.dsp;
+    const note = el("input", { type: "text", class: "labl-in", placeholder: "Note (what was disputed, what was decided)", maxlength: "200", value: r.note || "" });
+    dsp.addEventListener("change", () => { r.dsp = dsp.checked ? Math.max(1, r.dsp || 0) : 0; });
+    note.addEventListener("input", () => (r.note = note.value));
+    body.append(el("label", { class: "labl-chk", style: "margin-top:10px" }, dsp, "⚑ Disputed"), note);
+  };
+  draw();
+  const save = el("button", { class: "btn go", style: "flex:2;min-height:56px" }, "Save changes");
+  save.addEventListener("click", () => {
+    if (r.fmt === "teams" && r.teams.some(t => !t.m.length)) { SFX.bad(); return; }
+    const st = Object.fromEntries(Object.entries(r.st || {}).filter(([, v]) => v[0] || v[1])); r.st = st;
+    if (Object.keys(st).length) Object.assign(r, bbTagsFromStats(r.fmt === "teams" ? r.teams : null, r.p || [], st));
+    const what = [];
+    if (r.win !== r0.win) what.push("winner");
+    if (r.how !== r0.how) what.push("how");
+    if (JSON.stringify((r.teams || []).map(t => t.m)) !== JSON.stringify((r0.teams || []).map(t => t.m))) what.push("teams");
+    if (JSON.stringify(r.st) !== JSON.stringify(r0.st || {})) what.push("stats");
+    if (!!r.dsp !== !!r0.dsp || (r.note || "") !== (r0.note || "")) what.push("disputed");
+    r.ed = (r0.ed || []).concat([{ t: Date.now(), what: what.join(",") || "none" }]);
+    const B = BBS.get(); B.rounds[r.id] = r; BBS.save(B); SFX.good(); close(); route();
+  });
+  box.append(el("h3", {}, "EDIT · " + bbHM(r.t)), el("h1", {}, r.mode), body,
+    el("div", { class: "row", style: "gap:8px;margin-top:12px" }, el("button", { class: "btn", style: "flex:1;min-height:56px", onclick: close }, "Cancel"), save));
+  ov.append(box); document.body.append(ov);
+}
+const EP_bbRoundsPlates = bbRoundsPlates;
+bbRoundsPlates = function (say) {
+  const plates = EP_bbRoundsPlates(say);
+  const R = bbRoundsAll().filter(r => r.ev === EVENT_SALT).reverse();
+  const rows = [...plates[0].querySelectorAll('div[style*="justify-content:space-between"]')];
+  rows.forEach((row, i) => {
+    const r = R[i]; if (!r) return;
+    const span = row.querySelector("span");
+    if (span) span.textContent = span.textContent.replace(" · ⚠ not synced", "") + (r.how ? " · " + LABL_HOW_LABEL[r.how] : "") + (r.ed && r.ed.length ? " · edited" : "") + (r.dsp ? " · ⚑" : "");
+    row.insertBefore(el("button", { class: "btn small", style: "font-size:calc(12px*var(--tx));min-height:30px;padding:2px 8px;margin-left:auto", onclick: () => lablEditRound(r) }, "Edit"), row.lastElementChild);
+  });
+  return plates;
+};
 
 /* ---- Scoreboard (player-facing, mode "8") ---- */
 function lablBoard() {

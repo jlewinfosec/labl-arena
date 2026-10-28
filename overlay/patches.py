@@ -62,7 +62,7 @@ PATCHES_ALL += [
 PATCHES += [('"BLOOD GHOUL RUSTY FLESH SKULL BONES TEETH WOUND KNIFE SCRAP TORCH FERAL TOXIN SPORE CRYPT GRAVE STEEL VALVE RADIO POWER CHAIN BLADE SIREN NERVE VENOM PANIC SMOKE ASHES CRAWL STORM FUNGI SWAMP BURNT DEBRIS CORPSE BUNKER RATION SIGNAL CARBON RUBBLE PLAGUE FUNGUS MUTANT HUNGER MARROW SCREAM BLEACH MORGUE RAIDER WASTES RUSTED HAZARD TOXINS CINDER GUTTER SPINES LOCKED SHROUD SPLINT FEVERS VERMIN ROTTEN STATIC TOWERS VACCINE TETANUS BATTERY SURVIVE CARCASS WARHEAD BUNKERS ANTENNA SHAMBLE REACTOR OUTPOST HORRORS MUTANTS CHARGER SPRINTS CLINGER BLOATER SILENCE LOCKBOX FALLOUT DESPAIR FEVERED BLISTER WASTING ROTTING GASMASK CORRODE SCREAMS SHELTER DRIFTER HUNTERS".split(', '"BLAST DARTS FOAMS ARENA SCORE ROUND MATCH SQUAD TEAMS CREWS CROWN FLAGS RELAY SPAWN GUARD CLIPS SHOTS SPEED CHASE FIELD BAYOU GATOR SWAMP CRAWL CLAWS PINCH SHELL PATCH BUNKER TARGET VOLLEY SPRINT TACKLE ATTACK DEFEND BARREL RELOAD HOPPER BREACH BANNER MEDALS SEASON PLAYER SNIPER FLANKS ESCORT PYLONS LEAGUE BLASTS DODGED RUNNER RESPAWN CAPTURE TRIGGER BLASTER PAYLOAD RECOVER ARMORED BARRIER CHARGER FLAGGED OUTPOST COMMAND DEFENSE OFFENSE RALLIED SCORING RUNNERS DARTING SWEEPER VICTORY CRAWDAD MARSHES PELICAN SHRIMPS BOUDINS".split(')]
 PATCHES += [
   ('"Safety first: arm straight up = out of character, the Director\'s whistle stops everything, goggles on in the arena. Then teams and today\'s first modes."',
-   '"Safety first: blaster held overhead = out of play, a Board Member\'s call stops everything, eye protection on in the arena. Honor your hits. Then teams and today\'s first modes."'),
+   '""'),   # Phase 2: the briefing shows LABL's editable opening talk (lablTalkCard) instead of this note
   ('pav120: ["Pavilion 120 × 50", "Dry days: the roof covers the middle 90 × 40; tape the ends and sides."]',
    'pav120: ["Field 100 × 50", "The full arena: pop-up barriers set, spawns at both ends."]'),
   ('pav90: ["Pavilion 90 × 40", "Under the roof: 16 players or fewer, or rain."]',
@@ -136,4 +136,10 @@ PATCHES += [
 # --- Phase 0: no sfx/ folder ships with LABL; never fetch clips next to the page (keeps the synth sounds, no 404s)
 PATCHES += [
   (': typeof fetch === "function" && KIT_INLINE.map.clips.indexOf(name) >= 0\n? get("sfx/" + name + ".mp3")', ': false\n? get("sfx/" + name + ".mp3")'),
+]
+
+# --- Phase 2: no reset gate. Start round N is ready as soon as the last round is logged (the 10 s UNDO toast stays)
+PATCHES += [
+  ('const resetWait = run.savedAt && !run.resetDone && Date.now() - run.savedAt < BB_DAY.resetMaxSec * 1000;',
+   'const resetWait = false; // LABL: the Board Member taps Start when ready'),
 ]
