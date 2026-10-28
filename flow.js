@@ -18,24 +18,31 @@ await btn('Build a full day'); await p.waitForTimeout(300); await btn('Tap again
 await p.evaluate(()=>{const P=BBP.get(); const i=P.items.findIndex(x=>x.k==='mode'); if(i>=0){P.items[i].mode='Capture the Flag'; BBP.save(P);} });
 await say('plan built'); console.log(await p.evaluate(()=>BBP.get().items.map(i=>i.k==='brk'?('BRK '+i.kind+' '+(i.min||'')):('MODE '+i.mode+' x'+i.n)).join(' | ')));
 // teams: balanced shuffle
-await p.evaluate(()=>go({g:'bbrun',s:'teams'})); await p.waitForTimeout(400); console.log('team buttons:',(await buttons()).slice(0,30).join(' / '));
-await btn('shuffle'); await say('teams');
+// teams: the draw screen (Phase 1): everyone into the pool, set two blasters, draw, use
+await p.evaluate(()=>go({g:'bbrun',s:'teams'})); await p.waitForTimeout(400); console.log('draw buttons:',(await buttons()).slice(0,30).join(' / '));
+await btn('Everyone'); await p.click('.labl-prow.in .labl-chip'); await p.click('.labl-prow.in:nth-child(2) .labl-chip'); await btn('Draw teams'); await say('teams drawn');
+console.log(await p.evaluate(()=>[...document.querySelectorAll('.labl-team-bal')].map(x=>x.textContent).join(' || ')));
+await btn('Use these teams');
 // run
 await p.evaluate(()=>go({g:'bbrun'})); await p.waitForTimeout(400); await say('run start'); console.log((await buttons()).join(' / '));
-await btn('Briefing done'); await p.waitForTimeout(600); await say('after briefing');
+await btn('Briefing done'); await p.waitForTimeout(600); await say('after briefing (teams were drawn for this block already, so no draw screen)');
 console.log((await buttons()).join(' / '));
 
 const ff=async(sec)=>{await p.evaluate(sec=>{const r=jget('ep_bbrun',null); if(r&&r.clk&&r.clk.t0){r.clk.t0-=((r.clk.len||300)+1)*1000; jset('ep_bbrun',r);} },sec); await p.waitForTimeout(1200);};  // past the round's own length (CTF is 7 min)
 for (let rnd=1; rnd<=2; rnd++) {
   await btn('Start round'); await p.waitForTimeout(4500); await say('round '+rnd+' running');
   await ff(301); await say('round '+rnd+' horn'); console.log((await buttons()).slice(9,22).join(' / '));
-  await btn('ORANGE CRUSH'); await p.waitForTimeout(300); await say('logged round '+rnd);
+  await btn('RED WON'); await p.waitForTimeout(300); await say('logged round '+rnd);
   // UNDO toast lasts 10s; wait it out
   await p.waitForTimeout(10500);
   const t=await txt(); if (/Reset done/i.test(t)) { await btn('Reset done'); }
   await say('after reset '+rnd);
 }
 await p.screenshot({path:'shots/flow_block_done.png',fullPage:true});
+// the next mode block opens the draw screen on its own
+await btn('Next'); await p.waitForTimeout(500); await say('block 2 (draw screen should open)');
+if (!(await p.evaluate(()=>!!document.querySelector('.labl-draw')))) console.log('FAIL: draw screen did not open for the new block');
+await btn('Redraw'); await p.waitForTimeout(300); await btn('Use these teams'); await p.waitForTimeout(400); await say('block 2 run');
 await p.evaluate(()=>go({g:'bbrun',s:'rounds'})); await say('rounds tab');
 await p.evaluate(()=>go({g:'bbrun',s:'stand'})); await say('standings'); await p.screenshot({path:'shots/flow_stand.png',fullPage:true});
 // CSV

@@ -10,6 +10,7 @@ cd lint && npm install && cd ..        # once per machine (eslint + acorn)
 python3 build.py                        # -> LABL_Arena.html + docs/index.html + docs/sw.js
 node walk.js && node flow.js            # smoke + game-day flow tests (need Playwright)
 node pwa.js                             # installed-app test: offline reload + update keeps data
+node draw.js                            # team draw: 30 players x 20 draws balanced, walk-in, squads hidden
 ```
 
 ## Rules for changing anything
@@ -37,8 +38,8 @@ node pwa.js                             # installed-app test: offline reload + u
 
 ## Storage keys (localStorage)
 
-`ep_cfg` (config, PIN, roster under `.roster`, LABL settings under `.labl`), `ep_bb` (rounds,
-awards), `ep_bbteams`, `ep_bbplan`, `ep_bbrun`, `ep_bbterm*`, `ep_mtab`, `ep_tablog`, `ep_lk`,
+`ep_cfg` (config, PIN, roster under `.roster` with `age` Y/T/A per player, LABL settings under `.labl`), `ep_bb` (rounds,
+awards), `ep_bbteams` (sides, plus `pool` / `bl` blaster S/F/B / `day` / `drawIdx` for the LABL draw), `ep_bbplan`, `ep_bbrun`, `ep_bbterm*`, `ep_mtab`, `ep_tablog`, `ep_lk`,
 `ep_lock_<game>`. Keys keep their `ep_` prefix on purpose: renaming them would orphan saved data.
 
 ## Where things are in the EP code (search these names in LABL_Arena.html)

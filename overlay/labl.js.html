@@ -285,11 +285,12 @@ function lablRosterTab(say) {
     el("div", { class: "labl-roster" }, ...R[sq].map(m => el("div", { class: "labl-row" },
       el("span", {}, m.n + (m.nw ? " · NEW" : "")),
       el("span", { class: "row", style: "gap:6px" },
+        lablChip(m.age || "", LABL_AGE, LABL_AGE_NEXT, v => { lablRosterSetAge(m.id, v); route(); }),
         el("button", { class: "btn small", onclick: () => { const R2 = lablRoster(); const x = R2[sq].find(y => y.id === m.id); if (x) x.nw = !x.nw; lablRosterSave(R2); route(); } }, m.nw ? "Not new" : "Mark new"),
         el("button", { class: "btn small", onclick: () => { const to = prompt("Move " + m.n + " to which squad?", sq); if (!to || to.toUpperCase() === sq) return; const R2 = lablRoster(); R2[sq] = R2[sq].filter(y => y.id !== m.id); if (!R2[sq].length) delete R2[sq]; (R2[to.toUpperCase()] = R2[to.toUpperCase()] || []).push(m); lablRosterSave(R2); route(); } }, "Move"),
         el("button", { class: "btn small bad", onclick: () => dirApprove("Roster", "Remove " + m.n + "?", [kp("Their logged rounds stay in the standings.")], "Remove", () => { const R2 = lablRoster(); R2[sq] = R2[sq].filter(y => y.id !== m.id); if (!R2[sq].length) delete R2[sq]; lablRosterSave(R2); route(); }) }, "✕")))))));
   return el("div", {},
-    plate(el("h2", {}, "Roster"), kp("Players and squads persist across event days. Squads are optional: anyone without one goes in FREE AGENTS. Teams for the day are picked on the Teams tab.", "color:var(--bone-dim)"),
+    plate(el("h2", {}, "Roster"), kp("Players persist across event days. Names are all that's needed; tap the age chip (Youth 12 and under · Teen 13 to 17 · Adult) so the team draw can spread ages. Squads only matter in competitive blocks; anyone without one goes in FREE AGENTS.", "color:var(--bone-dim)"),
       el("div", { class: "labl-form" }, nameIn, sqIn, dl, el("label", { class: "labl-chk" }, nw, "First-timer"), add)),
     ...(lists.length ? lists : [plate(kp("No players yet.", "color:var(--bone-dim)"))]));
 }
@@ -419,6 +420,190 @@ function lablCsvFile(season) {
     return [r.era, r.ev, d.toLocaleDateString("en-CA"), d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }), blk, rn, r.mode, r.fmt, sides[0] || "", sides[1] || "", win, (r.obj || []).join(" / "), (r.mvp || []).map(names).join("; "), r.dsp ? 1 : 0, stats, r.id].map(q).join(",");
   });
   return { name: (season ? "labl-season-" + ERA : "labl-" + EVENT_SALT).replace(/[^a-z0-9-]+/gi, "_") + ".csv", text: [head.join(","), ...rows].join("\r\n"), type: "text/csv" };
+}
+
+/* ============ TEAMS (Phase 1) ============
+   RED vs BLUE by default, redrawn at the start of every mode block. Today's pool, each pooled player's blaster type and the
+   last draw live on ep_bbteams: { pool: [ids], bl: {id: "S"|"F"|"B"}, day: EVENT_SALT, drawIdx: plan item index of the last draw }.
+   Age (Youth / Teen / Adult) lives on the roster entry as `age` ("Y" | "T" | "A" | ""). Blank counts as neutral everywhere. */
+const LABL_AGE = { "": "Age?", Y: "Youth", T: "Teen", A: "Adult" }, LABL_AGE_NEXT = { "": "Y", Y: "T", T: "A", A: "" };
+const LABL_BL = { "": "Blaster?", S: "Springer", F: "Flywheel", B: "Both" }, LABL_BL_NEXT = { "": "S", S: "F", F: "B", B: "" };
+const EP_bbTeams = bbTeams;
+bbTeams = function () {
+  const T = EP_bbTeams();
+  // v0.1/0.2 data named the sides ORANGE CRUSH and NAVY TIDE
+  if (T.a && T.a.n === "ORANGE CRUSH") { T.a.n = "RED"; T.a.col = "red"; }
+  if (T.b && T.b.n === "NAVY TIDE") { T.b.n = "BLUE"; T.b.col = "blue"; }
+  if (T.day !== EVENT_SALT) { T.day = EVENT_SALT; T.pool = T.a.m.concat(T.b.m); T.drawIdx = -1; }   // a new event day: the pool starts from the last teams
+  T.pool = Array.isArray(T.pool) ? T.pool : []; T.bl = T.bl && typeof T.bl === "object" ? T.bl : {}; if (T.drawIdx == null) T.drawIdx = -1;
+  return T;
+};
+const EP_bbPlayers = bbPlayers;
+bbPlayers = function () { const R = (loadCfg() || {}).roster || {}, age = {}; Object.values(R).forEach(L => L.forEach(m => (age[m.id] = m.age || ""))); return EP_bbPlayers().map(x => Object.assign(x, { age: age[x.id] || "" })); };
+function lablRosterSetAge(id, age) { const R = lablRoster(); Object.values(R).forEach(L => L.forEach(m => { if (m.id === id) m.age = age; })); lablRosterSave(R); }
+/* the mode block the arena is on (or about to run): competitive blocks use squads, others never show them */
+function lablCurIdx() { const P = BBP.get(), run = BBR.get(); for (let i = run.idx; i < P.items.length; i++) if (P.items[i].k === "mode") return i; return P.items.findIndex(x => x.k === "mode"); }
+function lablCurItem() { const i = lablCurIdx(); return i >= 0 ? BBP.get().items[i] : null; }
+function lablCompetitive(item) { return !!item && item.comp === true; }
+
+/* ---- the balanced random draw ----
+   Each player sits in a bucket (blaster × age). Buckets are shuffled and dealt one player at a time to the team that keeps
+   things most even: team size first, then that player's blaster count, then that player's age count; ties break randomly.
+   The whole deal repeats (up to 60 tries) until every category differs by at most 1, keeping the best try. */
+function lablBalance(P, A, B, bl) {
+  const cnt = L => { const c = { n: L.length, S: 0, F: 0, B: 0, Y: 0, T: 0, A: 0 }; L.forEach(x => { if (bl[x.id]) c[bl[x.id]]++; if (x.age) c[x.age]++; }); return c; };
+  const a = cnt(A), b = cnt(B), d = {}; Object.keys(a).forEach(k => (d[k] = Math.abs(a[k] - b[k])));
+  return { a, b, d, over: Object.values(d).reduce((s, v) => s + Math.max(0, v - 1), 0) };
+}
+function lablDraw(P, bl) {
+  let best = null;
+  for (let t = 0; t < 60; t++) {
+    const buckets = {}; P.forEach(x => { const k = (bl[x.id] || "") + "/" + (x.age || ""); (buckets[k] = buckets[k] || []).push(x); });
+    const order = shuffle(Object.keys(buckets)), A = [], B = [];
+    order.forEach(k => shuffle(buckets[k]).forEach(x => {
+      const key = [L => L.length, L => L.filter(y => bl[y.id] && bl[y.id] === bl[x.id]).length, L => L.filter(y => y.age && y.age === x.age).length];
+      let pick = null;
+      for (const f of key) { const da = f(A), db = f(B); if (da !== db) { pick = da < db ? A : B; break; } }
+      (pick || (Math.random() < 0.5 ? A : B)).push(x);
+    }));
+    const bal = lablBalance(P, A, B, bl);
+    if (!best || bal.over < best.over) best = { A, B, over: bal.over };
+    if (best.over === 0) break;
+  }
+  return [best.A.map(x => x.id), best.B.map(x => x.id)];
+}
+function lablBalanceLine(L, bl) {
+  const c = lablBalance(L, L, [], bl).a, parts = [];
+  if (c.S) parts.push(c.S + " springer" + (c.S > 1 ? "s" : "")); if (c.F) parts.push(c.F + " flywheel" + (c.F > 1 ? "s" : "")); if (c.B) parts.push(c.B + " both");
+  if (c.Y) parts.push(c.Y + " youth"); if (c.T) parts.push(c.T + " teen" + (c.T > 1 ? "s" : "")); if (c.A) parts.push(c.A + " adult" + (c.A > 1 ? "s" : ""));
+  return parts.length ? parts.join(" · ") : "no blaster or age set";
+}
+/* which team keeps the balance best for one more player (walk-ins) */
+function lablPlaceOne(T, P, x) {
+  const byId = Object.fromEntries(P.map(y => [y.id, y])), A = T.a.m.map(i => byId[i]).filter(Boolean), B = T.b.m.map(i => byId[i]).filter(Boolean);
+  const sa = lablBalance(P, A.concat([x]), B, T.bl), sb = lablBalance(P, A, B.concat([x]), T.bl);
+  if (sa.over !== sb.over) return sa.over < sb.over ? "a" : "b";
+  if (A.length !== B.length) return A.length < B.length ? "a" : "b";
+  return Math.random() < 0.5 ? "a" : "b";
+}
+function lablChip(cur, LAB, NEXT, onSet, cls) {
+  const b = el("button", { class: "btn small labl-chip " + (cls || "") + (cur ? " on" : "") }, LAB[cur || ""]);
+  b.addEventListener("click", e => { e.stopPropagation(); SFX.click(); onSet(NEXT[cur || ""]); });
+  return b;
+}
+
+/* ---- the draw screen (Arena › Teams tab, and on its own when a mode block begins) ---- */
+function lablDrawScreen(auto) {
+  const T = bbTeams(), P = bbPlayers().sort((x, y) => x.n.localeCompare(y.n)), byId = Object.fromEntries(P.map(x => [x.id, x]));
+  const run = BBR.get(), it = lablCurItem(), idx = lablCurIdx(), comp = lablCompetitive(it);
+  const pool = new Set(T.pool.filter(id => byId[id]));
+  const save = () => { T.pool = [...pool]; bbSaveTeams(T); };
+  const out = el("div", { class: "colorsafe labl-draw" });
+  out.append(arenaBar("teams", true));
+  const back = () => go({ g: "bbrun" }), rr = () => go({ g: "bbrun", s: "teams" });   // re-render the draw itself (route() would fall back to the run screen once a draw exists)
+  const drawn = T.a.m.length + T.b.m.length > 0;
+  // who's here
+  const list = el("div", { class: "labl-pool" }, ...P.map(x => {
+    const inP = pool.has(x.id);
+    const row = el("div", { class: "labl-prow" + (inP ? " in" : "") },
+      el("span", { class: "nm" }, (x.nw ? "★ " : "") + x.n, comp ? el("small", {}, " · " + x.sq) : "", x.age ? el("small", { class: "age" }, " " + LABL_AGE[x.age]) : ""),
+      inP ? lablChip(T.bl[x.id] || "", LABL_BL, LABL_BL_NEXT, v => { T.bl[x.id] = v; save(); rr(); }) : el("span", { class: "labl-chip ghost" }, "tap to add"));
+    row.addEventListener("click", () => { SFX.click(); if (inP) { pool.delete(x.id); T.a.m = T.a.m.filter(i => i !== x.id); T.b.m = T.b.m.filter(i => i !== x.id); } else pool.add(x.id); save(); rr(); });
+    return row;
+  }));
+  const allB = el("button", { class: "btn small", onclick: () => { P.forEach(x => pool.add(x.id)); save(); rr(); } }, "Everyone"), noneB = el("button", { class: "btn small", onclick: () => { pool.clear(); T.a.m = []; T.b.m = []; save(); rr(); } }, "Nobody");
+  // teams
+  const teamBox = side => {
+    const L = T[side].m.map(i => byId[i]).filter(Boolean);
+    const flip = id => { const o = side === "a" ? "b" : "a"; T[side].m = T[side].m.filter(i => i !== id); T[o].m.push(id); bbSaveTeams(T); SFX.click(); rr(); };
+    return el("div", { class: "labl-team " + T[side].col, style: "--tc:" + BB_COL[T[side].col] },
+      el("div", { class: "labl-team-h" }, el("b", {}, T[side].n), el("span", {}, String(L.length))),
+      el("div", { class: "labl-team-names" }, ...L.map(x => el("button", { class: "btn small", onclick: () => flip(x.id) }, x.n + (T.bl[x.id] ? " · " + T.bl[x.id] : "")))),
+      el("div", { class: "labl-team-bal" }, lablBalanceLine(L, T.bl)));
+  };
+  const drawB = el("button", { class: "btn go", style: "min-height:60px;flex:1", onclick: () => { if (pool.size < 2) { SFX.bad(); return; } const [A, B] = lablDraw([...pool].map(i => byId[i]), T.bl); T.a.m = A; T.b.m = B; T.drawIdx = idx; T.fmt = T.fmt === "sq" && !comp ? "rb" : T.fmt; bbSaveTeams(T); SFX.good(); rr(); } }, drawn ? "🎲 Redraw" : "🎲 Draw teams");
+  const keepB = el("button", { class: "btn", style: "min-height:60px;flex:1", onclick: () => { T.drawIdx = idx; bbSaveTeams(T); SFX.good(); back(); } }, drawn ? "Keep last teams ▶" : "Back to the run screen");
+  const useB = el("button", { class: "btn go", style: "min-height:60px;width:100%;margin-top:10px", onclick: () => { T.drawIdx = idx; bbSaveTeams(T); SFX.good(); back(); } }, "Use these teams ▶");
+  out.append(plate(el("h3", {}, it ? (auto ? "NEW MODE · " : "") + it.mode.toUpperCase() : "TEAMS"), el("h1", {}, drawn ? "Teams for this mode" : "Who's playing today?"),
+    kp(drawn ? "Tap a name to move it to the other side. Redraw for a fresh balanced split." : "Tap everyone who's here, set their blaster (optional), then Draw teams. The pool carries over to the next mode, so this is the only check-in.", "color:var(--bone-dim)"),
+    drawn ? el("div", { class: "labl-teams2" }, teamBox("a"), teamBox("b")) : "",
+    el("div", { class: "row", style: "gap:8px;margin-top:10px" }, drawB, keepB), drawn ? useB : ""));
+  out.append(plate(el("div", { class: "row", style: "justify-content:space-between;align-items:center" }, el("h2", {}, "Today's pool · " + pool.size + " of " + P.length), el("span", { class: "row", style: "gap:6px" }, allB, noneB)),
+    P.length ? list : kp("No players on the roster yet (Board Member panel › Roster).", "color:var(--amber)")));
+  app.append(out);
+}
+/* the arena's Teams tab IS the draw screen; everything else is EP's arenaPage */
+const EP_arenaPage = arenaPage;
+arenaPage = function () {
+  const s = NAV.get("s"), g = NAV.get("g");
+  if (g !== "bbterm" && (s === "teams" || s === "draw")) { if (!arenaUnlocked()) { BBR_OK = 0; return arenaGate(); } DIR_OK = false; return lablDrawScreen(false); }
+  return EP_arenaPage();
+};
+/* the run screen opens the draw on its own when a mode block begins (round 1, clock not started, no draw for this block yet) */
+const EP_bbRun = bbRun;
+bbRun = function () {
+  const P0 = BBP.get(), run = BBR.get(), it = P0.items[run.idx], T = bbTeams();
+  const unlocked = BBR_OK && Date.now() - DIR_LAST < bbCfg().idleMin * 60000;
+  if (unlocked && it && it.k === "mode" && (run.rnd || 1) === 1 && !(run.clk && run.clk.t0) && T.drawIdx !== run.idx && T.fmt !== "ffa" && bbPlayers().length) return lablDrawScreen(true);
+  const r = EP_bbRun();
+  if (unlocked) {   // big walk-in button right under the NOW card, plus a way back to the draw
+    const first = app.querySelector(".colorsafe > .plate");
+    if (first) first.after(el("div", { class: "row labl-runtools" }, lablWalkInButton(), el("button", { class: "btn", style: "min-height:52px", onclick: () => go({ g: "bbrun", s: "teams" }) }, "🎲 Teams")));
+  }
+  return r;
+};
+/* ---- teams box on the panel's Teams tab and the run screen's fold: RED/BLUE shows the sides + a draw button; squads/FFA stay EP's ---- */
+const EP_bbTeamsBox = bbTeamsBox;
+bbTeamsBox = function (T, P, byId, say, onChange) {
+  const comp = lablCompetitive(lablCurItem());
+  if (!comp && T.fmt === "sq") { T.fmt = "rb"; bbSaveTeams(T); }
+  const box = EP_bbTeamsBox(T, P, byId, say, onChange);
+  const sel = box.querySelector("select");
+  if (sel && !comp) { const o = sel.querySelector('option[value="sq"]'); if (o) o.remove(); }
+  if (T.fmt !== "rb") return box;
+  // the RED/BLUE case: replace EP's card-scan box with the draw-screen summary
+  const w = el("div");
+  if (sel) w.append(sel);
+  const side = k => { const L = T[k].m.map(i => byId[i]).filter(Boolean); return el("div", { class: "labl-team " + T[k].col, style: "--tc:" + BB_COL[T[k].col] }, el("div", { class: "labl-team-h" }, el("b", {}, T[k].n), el("span", {}, String(L.length))), el("div", { class: "labl-team-names" }, ...L.map(x => el("span", { class: "labl-chip" }, x.n))), el("div", { class: "labl-team-bal" }, lablBalanceLine(L, T.bl))); };
+  w.append(el("div", { class: "labl-teams2" }, side("a"), side("b")),
+    el("div", { class: "row", style: "gap:8px;margin-top:8px" },
+      el("button", { class: "btn go", style: "min-height:52px", onclick: () => { if (modeVal() !== LABL_MODE.arena) { setMode(LABL_MODE.arena); bbRunUnlock(); DIR_OK = false; } go({ g: "bbrun", s: "teams" }); } }, "🎲 Draw screen"),
+      typeof lablWalkInButton === "function" ? lablWalkInButton(say) : ""),
+    kp("Teams are redrawn at the start of every mode. Blaster type and age are balanced when they're set.", "color:var(--bone-dim);font-size:calc(13px*var(--tx))"));
+  return w;
+};
+
+/* ---- walk-in: name, age chip, blaster chip, Add → roster + today's pool + the team that keeps the balance best ---- */
+function lablWalkInButton(say) {
+  return el("button", { class: "btn go labl-walkin", style: "min-height:52px", onclick: () => lablWalkIn(say) }, "+ Walk-in");
+}
+function lablWalkIn(say) {
+  const ov = el("div", { class: "modal" }), box = el("div", { class: "modal-box plate labl-walk" }), close = () => ov.remove();
+  let age = "", bl = "";
+  const nm = el("input", { type: "text", class: "labl-in", placeholder: "Player name", maxlength: "30", autocomplete: "off" });
+  const chips = el("div", { class: "row", style: "gap:8px;margin:8px 0" });
+  const draw = () => { chips.innerHTML = ""; chips.append(lablChip(age, LABL_AGE, LABL_AGE_NEXT, v => { age = v; draw(); }, "big"), lablChip(bl, LABL_BL, LABL_BL_NEXT, v => { bl = v; draw(); }, "big")); };
+  draw();
+  const out = el("div", { class: "msg bad" });
+  const add = el("button", { class: "btn go", style: "flex:2;min-height:56px" }, "Add");
+  add.addEventListener("click", () => {
+    const n = nm.value.trim(); if (!n) { out.textContent = "> Type a name."; SFX.bad(); nm.focus(); return; }
+    const R = lablRoster(); let m = null; Object.values(R).forEach(L => L.forEach(x => { if (x.n.toLowerCase() === n.toLowerCase()) m = x; }));
+    if (!m) { m = { id: "p" + Math.random().toString(36).slice(2, 9), n, nw: true, dead: false, age }; (R["FREE AGENTS"] = R["FREE AGENTS"] || []).push(m); lablRosterSave(R); }
+    else if (age && m.age !== age) { m.age = age; lablRosterSave(R); }
+    const T = bbTeams(), P = bbPlayers(), x = P.find(y => y.id === m.id);
+    if (!T.pool.includes(m.id)) T.pool.push(m.id); if (bl) T.bl[m.id] = bl;
+    T.a.m = T.a.m.filter(i => i !== m.id); T.b.m = T.b.m.filter(i => i !== m.id);
+    const sd = T.fmt === "rb" ? lablPlaceOne(T, P, x) : null; if (sd) T[sd].m.push(m.id);
+    bbSaveTeams(T); SFX.good(); close();
+    const t = n + (sd ? " joins " + T[sd].n + "." : " added to today's pool.");
+    if (say) say(t); else if (typeof toast === "function") toast(t);
+    route();
+  });
+  nm.addEventListener("keydown", e => { if (e.key === "Enter") add.click(); });
+  box.append(el("h3", {}, "Walk-in"), el("h1", {}, "Add a player"), nm, chips, out,
+    el("div", { class: "row", style: "gap:8px;margin-top:8px" }, el("button", { class: "btn", style: "flex:1;min-height:56px", onclick: close }, "Cancel"), add));
+  ov.append(box); document.body.append(ov); setTimeout(() => nm.focus(), 60);
 }
 
 /* ---- Scoreboard (player-facing, mode "8") ---- */

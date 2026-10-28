@@ -135,4 +135,26 @@ body.labl .labl-table td:first-child{font-family:var(--hd);color:var(--gold)}
 body.labl .labl-foot{text-align:center;font-family:var(--mono);font-size:calc(12px*var(--tx));color:var(--bone-dim);opacity:.8;padding:14px 0 6px}
 body.labl .labl-update{display:block;width:100%;margin:8px 0;padding:12px 14px;min-height:52px;border:0;border-radius:10px;background:var(--orange);color:#fff;font-family:var(--hd);font-size:calc(18px*var(--tx));letter-spacing:.03em;text-transform:uppercase;cursor:pointer;box-shadow:0 2px 0 rgba(0,0,0,.35)}
 body.labl .labl-update b{color:#fff;margin-right:6px}
+/* Phase 1: teams, draw screen, chips, walk-in */
+body.labl .labl-chip{display:inline-block;padding:6px 12px;min-height:40px;border-radius:999px;border:2px solid var(--edge);background:rgba(255,255,255,.06);color:var(--bone);font-family:var(--hd);font-size:calc(15px*var(--tx));letter-spacing:.04em;text-transform:uppercase;white-space:nowrap;box-shadow:none}
+body.labl .labl-chip.on{background:var(--orange);border-color:var(--orange);color:#fff}
+body.labl .labl-chip.ghost{color:var(--bone-dim);border-style:dashed;text-transform:none;font-family:var(--px)}
+body.labl .labl-chip.big{min-height:56px;font-size:calc(20px*var(--tx));padding:10px 18px;flex:1}
+body.labl .labl-pool{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:6px}
+body.labl .labl-prow{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 12px;min-height:56px;border-radius:10px;background:rgba(255,255,255,.05);border:2px solid transparent;cursor:pointer;font-size:calc(19px*var(--tx))}
+body.labl .labl-prow.in{background:rgba(240,120,32,.18);border-color:var(--orange)}
+body.labl .labl-prow .nm{font-family:var(--hd);text-transform:uppercase;letter-spacing:.02em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+body.labl .labl-prow small{color:var(--bone-dim);font-family:var(--px);text-transform:none;letter-spacing:0;font-size:calc(14px*var(--tx))}
+body.labl .labl-teams2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px}
+@media (max-width:640px){body.labl .labl-teams2{grid-template-columns:1fr}}
+body.labl .labl-team{border:3px solid var(--tc);border-radius:12px;padding:10px;background:color-mix(in srgb,var(--tc) 16%,var(--navy2))}
+body.labl .labl-team-h{display:flex;justify-content:space-between;align-items:baseline;font-family:var(--hd);text-transform:uppercase;font-size:calc(26px*var(--tx));color:var(--tc);margin-bottom:6px}
+body.labl .labl-team-h span{font-size:calc(34px*var(--tx));color:#fff}
+body.labl .labl-team-names{display:flex;flex-wrap:wrap;gap:6px}
+body.labl .labl-team-names .btn.small{min-height:44px;background:rgba(255,255,255,.08);border-color:transparent}
+body.labl .labl-team-bal{margin-top:8px;font-family:var(--px);font-size:calc(14px*var(--tx));color:var(--bone-dim)}
+body.labl .labl-runtools{gap:8px;margin:8px 0;flex-wrap:wrap}
+body.labl .labl-walkin{font-size:calc(20px*var(--tx));flex:1;max-width:320px}
+body.labl .labl-walk .labl-in{font-size:calc(24px*var(--tx));min-height:60px}
+body.labl .labl-draw h1{font-size:calc(34px*var(--tx))}
 </style>

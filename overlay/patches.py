@@ -17,11 +17,9 @@ PATCHES = [
    '"JAMMED: Hard runs are blocked until a Standard run wins here."'),
   # --- no automatic night rules / red palette flip at sunset
   ('let NIGHT_ON = true;', 'let NIGHT_ON = false;'),
-  # --- team colours: LABL sides
+  # --- team colours: Phase 1 keeps EP's RED / BLUE sides (orange and navy stay available for a 3rd/4th side)
   ('const BB_COL = { red: "#ff4a3d", blue: "#3da5ff", gold: "#ffd36a", green: "#62e07a" };',
-   'const BB_COL = { orange: "#f07820", navy: "#4f8bff", red: "#ff4a3d", blue: "#3da5ff", gold: "#ffd36a", green: "#62e07a" };'),
-  ('return jget("ep_bbteams", null) || { fmt: "rb", a: { n: "RED", col: "red", m: [] }, b: { n: "BLUE", col: "blue", m: [] }, sa: [], sb: [] };',
-   'return jget("ep_bbteams", null) || { fmt: "rb", a: { n: "ORANGE CRUSH", col: "orange", m: [] }, b: { n: "NAVY TIDE", col: "navy", m: [] }, sa: [], sb: [] };'),
+   'const BB_COL = { red: "#e8322a", blue: "#2f6fe8", gold: "#ffd36a", green: "#62e07a", orange: "#f07820", navy: "#4f8bff" };'),
   # --- day plan defaults: 11:15 start, 5 modes max, briefing only (no lunch/dinner anchors)
   ('''start: "09:00",
 end: "21:00",
