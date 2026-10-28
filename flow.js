@@ -14,6 +14,15 @@ await p.evaluate(()=>{const R={}; const sq=['MAKERS','KREWE','BAYOU']; ['Jacob',
 await p.evaluate(()=>{setMode('6'); bbRunUnlock(); go({g:'bbrun',s:'plan'});}); await p.waitForTimeout(500);
 await p.fill('input[type=number]','12'); await p.waitForTimeout(300);
 await btn('Build a full day'); await p.waitForTimeout(300); await btn('Tap again to confirm'); await p.waitForTimeout(600);
+// Phase 3: 20 builds with zombies off never pick a zombie mode and always end with Dart sweep & teardown
+const p3=await p.evaluate(()=>{const bad=[]; for(let i=0;i<20;i++){const P=BBP.get(); P.zombies=false; P.items=P.items.filter(x=>x.k==='brk'&&x.kind==='brief'); bbPlanAuto(P); BBP.save(P); const M=P.items.filter(x=>x.k==='mode'); if(M.some(x=>BB_ZOMBIE_MODES.includes(x.mode))) bad.push('build '+i+' has a zombie mode'); const last=P.items[P.items.length-1]; if(!(last.k==='brk'&&last.kind==='teardown')) bad.push('build '+i+' ends with '+last.kind); if(M.length<3||M.length>5) bad.push('build '+i+' has '+M.length+' modes'); if(P.items.some(x=>x.k==='brk'&&(x.kind==='lunch'||x.kind==='dinner'))) bad.push('build '+i+' has a meal');} 
+  const P=BBP.get(); P.zombies=true; P.items=P.items.filter(x=>x.k==='brk'&&x.kind==='brief'); bbPlanAuto(P); const zOn=P.items.some(x=>x.k==='mode'&&BB_ZOMBIE_MODES.includes(x.mode)); P.zombies=false; P.items=P.items.filter(x=>x.k==='brk'&&x.kind==='brief'); bbPlanAuto(P); BBP.save(P); return {bad,zOn};});
+console.log(p3.bad.length?'FAIL '+p3.bad.join('; '):'PASS 20 builds: no zombie modes, 3-5 modes, last item is Dart sweep & teardown, no meals'); console.log(p3.zOn?'PASS zombies on: the blend includes a zombie mode':'WARN zombies on but no zombie mode in this build (random)');
+// packing list changes when a block's mode changes
+const pk=await p.evaluate(()=>{const P=BBP.get(); const M=P.items.filter(x=>x.k==='mode'); M[0].mode='Capture the Flag'; const a=lablPacking(P).modes.map(g=>g.qty+'x'+g.item).join('|'); M[0].mode='Nerfball'; const b=lablPacking(P).modes.map(g=>g.qty+'x'+g.item).join('|'); return {a,b};});
+console.log(pk.a!==pk.b&&/2xFlags/.test(pk.a)&&/2xGoals/.test(pk.b)?'PASS packing list follows the block\'s mode':'FAIL packing list: '+pk.a+' vs '+pk.b);
+await p.evaluate(()=>{BB_PLAN_SEL=null; go({g:'bbrun',s:'plan'});}); await p.waitForTimeout(400); await p.click('details.fold summary:has-text("Packing list")'); await p.waitForTimeout(300);
+await p.screenshot({path:'shots/p3_plan_1280x800.png',fullPage:true}); await p.setViewportSize({width:800,height:1280}); await p.waitForTimeout(300); await p.screenshot({path:'shots/p3_plan_800x1280.png',fullPage:true}); await p.setViewportSize({width:1280,height:800});
 // pin the first block to a plain team mode so the round flow is the same every run (the builder is random)
 await p.evaluate(()=>{const P=BBP.get(); const M=P.items.filter(x=>x.k==='mode'); M[0].mode='Capture the Flag'; M[1].mode='Pistol-Only 3-15 FFA'; BBP.save(P);});   // block 2: a stat mode (Phase 2)
 await say('plan built'); console.log(await p.evaluate(()=>BBP.get().items.map(i=>i.k==='brk'?('BRK '+i.kind+' '+(i.min||'')):('MODE '+i.mode+' x'+i.n)).join(' | ')));

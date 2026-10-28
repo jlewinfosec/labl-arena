@@ -143,3 +143,22 @@ PATCHES += [
   ('const resetWait = run.savedAt && !run.resetDone && Date.now() - run.savedAt < BB_DAY.resetMaxSec * 1000;',
    'const resetWait = false; // LABL: the Board Member taps Start when ready'),
 ]
+
+# --- Phase 3: breaks are briefing / dart sweep / water / check / custom / reload / Dart sweep & teardown (no lunch, no dinner)
+PATCHES += [
+  ('''sweep: ["🧹", "Dart sweep", 20],
+lunch: ["🍔", "Lunch", 60],
+dinner: ["🍽", "Dinner", BB_DAY.dinner],
+water: ["💧", "Water & shade", 10],''',
+   '''sweep: ["🧹", "Dart sweep", 20],
+water: ["💧", "Water & shade", 10],
+teardown: ["🧹", "Dart sweep & teardown", 20], // LABL: the last item of every day'''),
+  # the zombie switch sits with today's checkboxes in the Day plan
+  ('chk("lights", "Work lights on hand"),', 'chk("zombies", "Zombie modes today"),\nchk("lights", "Work lights on hand"),'),
+]
+# --- Phase 3: with zombie modes off a set is still 3 blocks (objective, elimination, and one more of either), so the
+#     dart sweep lands after block 3 as the roadmap says; with zombies on it's EP's objective + elimination + zombie
+PATCHES += [
+  ('const newSet = () => (setLeft = shuffle(KINDS.filter(k => pools[k].length)));',
+   'const newSet = () => (setLeft = pools.z.length ? shuffle(KINDS.filter(k => pools[k].length)) : shuffle(["o", "e", Math.random() < 0.5 ? "o" : "e"].filter(k => pools[k].length)));'),
+]

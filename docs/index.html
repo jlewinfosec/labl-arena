@@ -1427,6 +1427,14 @@ body.labl .labl-confirm{margin:8px 0}
 body.labl .labl-edit{max-width:980px;width:96vw}
 body.labl .labl-edit .labl-stat{grid-template-columns:repeat(auto-fill,minmax(400px,1fr))}
 body.labl .labl-edit{max-height:92vh;overflow-y:auto}
+/* Phase 3: plan row chips, props, packing list */
+body.labl .labl-chip.mini{min-height:26px;padding:2px 10px;font-size:calc(12px*var(--tx));margin-left:4px;border-width:1px;vertical-align:middle}
+body.labl .labl-rowchips{display:inline-flex;gap:2px;margin-left:8px;vertical-align:middle}
+body.labl .labl-rowgear{display:block;font-family:var(--px);font-size:calc(12px*var(--tx));color:var(--bone-dim);text-transform:none;letter-spacing:0;margin-top:2px}
+body.labl .labl-pack-row{font-size:calc(18px*var(--tx));margin:4px 0}
+body.labl .labl-pack-row.done span{opacity:.55;text-decoration:line-through}
+body.labl .labl-pack-row b{color:var(--gold);font-family:var(--hd)}
+body.labl .labl-pack-row small{color:var(--bone-dim);font-size:calc(13px*var(--tx))}
 </style>
 
 </head>
@@ -1437,7 +1445,7 @@ body.labl .labl-edit{max-height:92vh;overflow-y:auto}
 <script>
 /* ============ LABL PRE-SHIMS: globals the dropped EP modules used to provide ============
    Kept deliberately small and honest: each one returns the "nothing's there" value the EP code already handles. */
-window.LABL = { version: "0.4.0", name: "LABL Arena" };
+window.LABL = { version: "0.5.0", name: "LABL Arena" };
 var NATIVE = { on: false, plugin: () => null, haptic: () => {} };
 var EPSYNC = { on: false, isMain: () => true, main: () => true };
 var RAD_REMOTE = null, WX_REMOTE = null, FIELD_REMOTE = null, ALERT_REMOTE = null, BRK_REMOTE = null, BC_REMOTE = null;
@@ -36763,9 +36771,8 @@ Territories: ["Boilerdome-esque Territories"],
 const BB_BRK = {
 brief: ["📣", "Safety briefing & teams", BB_DAY.brief],
 sweep: ["🧹", "Dart sweep", 20],
-lunch: ["🍔", "Lunch", 60],
-dinner: ["🍽", "Dinner", BB_DAY.dinner],
 water: ["💧", "Water & shade", 10],
+teardown: ["🧹", "Dart sweep & teardown", 20], // LABL: the last item of every day
 check: ["🎯", "Ammo check: sweep or skip", 10],
 custom: ["⏸", "Break", 15],
 reload: ["🔄", "Reload & reset", 10] // D-261: between two modes. Appended last: a plan code stores the break's position here
@@ -37054,7 +37061,7 @@ setLeft = [], // kinds still owed in the current set
 heatSet = 0, // modes placed in the current heat set
 teamDone = kept.some(x => x.k === "mode" && x.team),
 afterMode = !!kept.length && kept[kept.length - 1].k === "mode"; // the item just before is a mode (so the next needs a reload)
-const newSet = () => (setLeft = shuffle(KINDS.filter(k => pools[k].length)));
+const newSet = () => (setLeft = pools.z.length ? shuffle(KINDS.filter(k => pools[k].length)) : shuffle(["o", "e", Math.random() < 0.5 ? "o" : "e"].filter(k => pools[k].length)));
 newSet();
 const sweepNow = () => {
 items.push({ id: bbId(), k: "brk", kind: "sweep", min: sweep });
@@ -39808,6 +39815,7 @@ el("div", { class: "bbp-fields" }, num("heads", "How many players today (0 = not
 el(
 "div",
 { class: "bbp-chks" },
+chk("zombies", "Zombie modes today"),
 chk("lights", "Work lights on hand"),
 chk("first", "Any first-timers today? (briefing " + BB_DAY.briefFirst + " min, else " + BB_DAY.brief + ")", briefFix)
 ),
@@ -41274,7 +41282,9 @@ function lablCfg() {
     hard: c.hard !== false,            // offer the Hard setting on the Mission Tablet
     story: c.story || { start: "", end: "", game: "" },
     setup: !!c.setup,                  // first-run done
-    persist: c.persist || ""           // navigator.storage.persist() result: yes / no / na
+    persist: c.persist || "",          // navigator.storage.persist() result: yes / no / na
+    gear: c.gear || {},                // per-mode prop overrides (Phase 3)
+    everyday: c.everyday || null       // every-day packing list override
   };
 }
 function lablCfgSet(patch) {
@@ -41282,7 +41292,8 @@ function lablCfgSet(patch) {
   v.labl = Object.assign({}, v.labl || {}, patch);
   saveCfg(v);
 }
-function lablModes() { const off = lablCfg().modesOff; return BB_MODES .filter(m => !off.includes(m)); }
+let LABL_ZOMBIES = null;   // set while Build a full day runs, so the builder sees the plan it is building
+function lablModes() { const off = lablCfg().modesOff, z = LABL_ZOMBIES != null ? LABL_ZOMBIES : !!(jget("ep_bbplan", null) || {}).zombies; return BB_MODES .filter(m => !off.includes(m) && (z || !BB_ZOMBIE_MODES.includes(m))); }
 
 /* ---- Story Mission: a normal round with a set beginning and end ---- */
 BB_MODES.push("Story Mission");
@@ -41624,6 +41635,7 @@ function lablSettingsTab(say) {
     plate(el("h2", {}, "Board Member PIN"), el("div", { class: "row", style: "gap:8px" }, p1, p2, pinB)),
     plate(el("h2", {}, "Opening talk"), kp("Read out at the day's first item. The default covers the honor code, eye protection, loaner gear and how a Board Member stops play.", "color:var(--bone-dim)"), lablTalkCard(say)),
     plate(el("h2", {}, "Game modes offered"), kp("Untick a mode to hide it from the Day plan and the round log.", "color:var(--bone-dim)"), el("div", { class: "labl-modes" }, ...modeRows)),
+    plate(el("h2", {}, "Gear"), kp("What each mode needs on the field. The Day plan totals these into the packing list.", "color:var(--bone-dim)"), lablGearSettings(say)),
     plate(el("h2", {}, "Tags and outs decide the winner in…"), kp("In these modes the winner step is the tags/outs grid: most tags, then fewest outs, and the Board Member confirms. Elsewhere the grid is optional.", "color:var(--bone-dim)"), el("div", { class: "labl-modes" }, ...statRows)),
     plate(el("h2", {}, "Screen & sound"), screenSoundFold()));
 }
@@ -42075,6 +42087,109 @@ bbRoundsPlates = function (say) {
   });
   return plates;
 };
+
+/* ============ DAY PLAN AND GEAR (Phase 3) ============
+   No lunch or dinner (BB_BRK patched). Build a full day always ends with "Dart sweep & teardown". Zombie modes only when the
+   plan's switch is on (lablModes). Each mode block carries `comp` (competitive: squads) and `mg` (mini-game timing: arena /
+   story). Every mode lists its props (BB_INFO[m].gear); the plan totals them into a packing list. */
+const LABL_GEAR_DEFAULT = {
+  "Defend the Pylon": [["Bottles (pylons)", 2]],
+  "Capture the Flag": [["Flags", 2]],
+  "Nerfball": [["Ball", 1], ["Goals", 2]],
+  "Defend the Core": [["Cones", 9], ["Core markers", 2]],
+  "Territories": [["Zone markers", 5]],
+  "Boilerdome-esque Territories": [["Zone markers", 5]],
+  "Attrition": [["Buckets", 2], ["Sets of stars", 2]],
+  "Ball Push/Drone Delivery/VIP Escort": [["Ball", 1], ["Checkpoint cones", 6], ["VIP marker", 1]],
+  "Scavenger 3-15": [["Spare darts to scatter", 1]],
+  "Weak Point Zombies": [["Mega darts", 1], ["Mega XL darts", 1]],
+  "Secret Ninja": [["Foam melee weapons", 1]],
+  "Alamo": [["Barriers for the fort", 1]],
+  "Zombie Alamo (Rom-Alamo)": [["Barriers for the fort", 1]],
+  "King of the Hill": [["Hill marker", 1]],
+  "Hardpoint": [["Hill markers (A, B, C)", 3]],
+  "Juggernaut Payload": [["Payload (ball or box)", 1], ["Checkpoint cones", 4]],
+  "Double Juggernaut Payload": [["Payloads", 2], ["Checkpoint cones", 4]],
+  "Yeetball/Cone Collection": [["Cones", 6], ["Ball", 1]],
+  "Search & Destroy": [["Bomb site markers", 2], ["Tablet + stand", 1]],
+  "Sabotage": [["Bomb prop", 1], ["Tablet + stand", 1]],
+  "Uplink": [["Tablet + stand", 1]],
+  "Story Mission": [["Tablet + stand", 1]]
+};
+const LABL_EVERYDAY_DEFAULT = [["Loaner eye protection", 6], ["Loaner blasters", 4], ["Dart buckets", 2], ["Pop-up barriers", 8], ["Tablet + charger + speaker", 1], ["First-aid kit", 1]];
+function lablGearOf(mode) { const o = ((loadCfg() || {}).labl || {}).gear || {}; const g = Array.isArray(o[mode]) ? o[mode] : (bbInfo(mode).gear || []); return g.map(x => Array.isArray(x) ? { item: x[0], qty: +x[1] || 1 } : x).filter(x => x && x.item); }
+function lablEveryday() { const o = ((loadCfg() || {}).labl || {}).everyday; return (Array.isArray(o) ? o : LABL_EVERYDAY_DEFAULT).map(x => Array.isArray(x) ? { item: x[0], qty: +x[1] || 1 } : x).filter(x => x && x.item); }
+Object.entries(LABL_GEAR_DEFAULT).forEach(([m, g]) => { if (BB_INFO[m]) BB_INFO[m].gear = g.map(([item, qty]) => ({ item, qty })); });
+/* the packing list for a plan: the largest quantity any one block needs (props are reused), plus the every-day list */
+function lablPacking(P) {
+  const need = {};
+  (P.items || []).filter(x => x.k === "mode").forEach(x => lablGearOf(x.mode).forEach(g => { need[g.item] = Math.max(need[g.item] || 0, g.qty); }));
+  const modes = Object.entries(need).map(([item, qty]) => ({ item, qty, src: (P.items || []).filter(x => x.k === "mode" && lablGearOf(x.mode).some(g => g.item === item)).map(x => x.mode) }));
+  return { modes, every: lablEveryday() };
+}
+const lablPackKey = () => jget("ep_bbpack", null) && jget("ep_bbpack", null).ev === EVENT_SALT ? jget("ep_bbpack", null) : { ev: EVENT_SALT, done: {} };
+function lablPackingFold(P) {
+  const L = lablPacking(P), pk = lablPackKey();
+  const row = (g, src) => { const cb = el("input", { type: "checkbox" }); cb.checked = !!pk.done[g.item]; cb.addEventListener("change", () => { pk.done[g.item] = cb.checked; jset("ep_bbpack", pk); }); return el("label", { class: "labl-chk labl-pack-row" + (cb.checked ? " done" : "") }, cb, el("span", {}, el("b", {}, g.qty > 1 ? g.qty + " × " : ""), g.item, src ? el("small", {}, " · " + src.join(", ")) : "")); };
+  const text = () => "LABL packing list · " + EVENT_SALT + "\n" + (L.modes.length ? "Props:\n" + L.modes.map(g => "- " + (g.qty > 1 ? g.qty + " × " : "") + g.item + " (" + g.src.join(", ") + ")").join("\n") + "\n" : "") + "Every day:\n" + L.every.map(g => "- " + (g.qty > 1 ? g.qty + " × " : "") + g.item).join("\n");
+  const share = el("button", { class: "btn small go" }, "Share list");
+  share.addEventListener("click", async () => { try { if (navigator.share) { await navigator.share({ title: "LABL packing list", text: text() }); return; } } catch (e) { if (e && e.name === "AbortError") return; } try { await navigator.clipboard.writeText(text()); if (typeof toast === "function") toast("Copied to the clipboard."); } catch (e) { prompt("Copy the list:", text()); } });
+  const total = L.modes.length + L.every.length, done = [...L.modes, ...L.every].filter(g => pk.done[g.item]).length;
+  return fold("🎒 Packing list · " + done + " of " + total + " packed",
+    kp("Everything the planned blocks need, totaled: an item takes the largest count any one block needs, since props are reused. Tick as you load the car.", "color:var(--bone-dim);font-size:calc(13px*var(--tx))"),
+    L.modes.length ? el("div", { class: "labl-lbl2" }, "Props for today's modes") : "", ...L.modes.map(g => row(g, g.src)),
+    el("div", { class: "labl-lbl2" }, "Every day"), ...L.every.map(g => row(g, null)),
+    el("div", { class: "row", style: "gap:8px;margin-top:8px" }, share, el("button", { class: "btn small", onclick: () => { pk.done = {}; jset("ep_bbpack", pk); route(); } }, "Clear ticks")));
+}
+/* Build a full day: EP's builder, then LABL's close — the day ends with Dart sweep & teardown (20 min), never a plain sweep */
+const EP_bbPlanAuto = bbPlanAuto;
+bbPlanAuto = function (P, opt) {
+  LABL_ZOMBIES = !!P.zombies;
+  try { EP_bbPlanAuto(P, opt); } finally { LABL_ZOMBIES = null; }
+  while (P.items.length && P.items[P.items.length - 1].k === "brk" && ["sweep", "reload", "water", "check"].includes(P.items[P.items.length - 1].kind)) P.items.pop();
+  if (P.items.some(x => x.k === "mode")) P.items.push({ id: bbId(), k: "brk", kind: "teardown", min: 20 });
+  P.items.forEach(x => { if (x.k === "mode") { if (x.comp == null) x.comp = false; if (!x.mg) x.mg = "arena"; } });
+  return P;
+};
+/* the Day plan editor: packing list on top, Competitive / timing chips and props on every mode row */
+const EP_bbPlanEditor = bbPlanEditor;
+bbPlanEditor = function (inRun) {
+  const box = EP_bbPlanEditor(inRun), P = BBP.get();
+  const rows = [...box.querySelectorAll(".bbp-row")];
+  P.items.forEach((x, i) => {
+    const row = rows[i]; if (!row || x.k !== "mode") return;
+    const w = row.querySelector(".bbp-w"); if (!w) return;
+    const chip = (lab, on, fn, title) => { const b = el("button", { class: "labl-chip mini" + (on ? " on" : ""), title }, lab); b.addEventListener("click", e => { e.stopPropagation(); e.preventDefault(); fn(); BBP.save(P); SFX.click(); route(); }); return b; };
+    const gear = lablGearOf(x.mode);
+    w.append(el("span", { class: "labl-rowchips" },
+      chip(x.comp ? "Competitive" : "Casual", !!x.comp, () => (x.comp = !x.comp), "Competitive blocks use squads and count toward squad standings"),
+      chip(x.mg === "story" ? "Story timing" : "Arena timing", x.mg === "story", () => (x.mg = x.mg === "story" ? "arena" : "story"), "Mini-game timing: short arena games or full story games")),
+      gear.length ? el("small", { class: "labl-rowgear" }, "🎒 " + gear.map(g => (g.qty > 1 ? g.qty + "× " : "") + g.item).join(" · ")) : "");
+  });
+  if (!inRun) box.prepend(lablPackingFold(P));
+  return box;
+};
+/* the run screen's teardown item */
+const EP2_bbRunBreak = bbRunBreak;
+bbRunBreak = function (it, run, row, unlocked, redraw, P) {
+  const box = EP2_bbRunBreak(it, run, row, unlocked, redraw, P);
+  if (it.kind === "teardown") { const h1 = box.querySelector("h1"); if (h1) h1.after(kp("Last item of the day. Everyone sweeps darts into the buckets, then barriers down, props counted against the packing list, tablet and speaker on the charger. Send tonight's backup to Google Drive before you leave the field.")); }
+  return box;
+};
+/* Settings: gear per mode and the every-day list, one line per item: "Item × qty" (or just "Item") */
+function lablGearSettings(say) {
+  const sel = el("select", { class: "labl-in" }, ...BB_MODES.map(m => el("option", { value: m }, m)));
+  const ta = el("textarea", { class: "labl-in", rows: "4" }), ev = el("textarea", { class: "labl-in", rows: "7" });
+  const fmt = L => L.map(g => g.item + (g.qty > 1 ? " × " + g.qty : "")).join("\n");
+  const parse = t => t.split("\n").map(l => l.trim()).filter(Boolean).map(l => { const m = l.match(/^(.*?)(?:\s*[×x]\s*(\d+))?$/i); return [m[1].trim(), m[2] ? +m[2] : 1]; });
+  const load = () => (ta.value = fmt(lablGearOf(sel.value)));
+  sel.addEventListener("change", load); load(); ev.value = fmt(lablEveryday());
+  const saveG = el("button", { class: "btn small go", onclick: () => { const o = Object.assign({}, lablCfg().gear || {}); o[sel.value] = parse(ta.value); lablCfgSet({ gear: o }); SFX.good(); say("Props saved for " + sel.value + "."); } }, "Save props");
+  const resetG = el("button", { class: "btn small", onclick: () => { const o = Object.assign({}, lablCfg().gear || {}); delete o[sel.value]; lablCfgSet({ gear: o }); load(); say("Back to the default props."); } }, "Default");
+  const saveE = el("button", { class: "btn small go", onclick: () => { lablCfgSet({ everyday: parse(ev.value) }); SFX.good(); say("Every-day list saved."); } }, "Save every-day list");
+  return el("div", {}, el("label", { class: "labl-lbl" }, "Props for a mode (one per line, “Item × 2”)", sel, ta), el("div", { class: "row", style: "gap:8px" }, saveG, resetG),
+    el("label", { class: "labl-lbl", style: "margin-top:12px" }, "Every day", ev), saveE);
+}
 
 /* ---- Scoreboard (player-facing, mode "8") ---- */
 function lablBoard() {
