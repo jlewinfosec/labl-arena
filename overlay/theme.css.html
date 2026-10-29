@@ -6,7 +6,7 @@
   --bg:var(--navy); --casing:var(--navy2); --casing2:#132565; --rust:var(--edge); --stain:rgba(240,120,32,.08);
   --ph:var(--orange); --ph2:#ff9a4a; --phd:#9a4d14; --phdd:#3a2410; --glass:#0b1740;
   --amber:var(--gold); --amberd:#8a6a1c; --red:#ff5a4e; --redd:#8a1f18; --blood:#5a1410;
-  --bone:#f4f6fb; --bone-dim:#aab6dc; --glow:var(--orange); --ore:var(--gold); --blood2:var(--red); --clot:#1a0a2a;
+  --bone:#f4f6fb; --bone-dim:#c0cbea; --glow:var(--orange); --ore:var(--gold); --blood2:var(--red); --clot:#1a0a2a;
   --glowc:240,120,32; --amberc:255,211,106; --redc:255,90,78; --screen1:#162a6e; --screen2:#0f1f5c; --screen3:#0a1540; --ink:#0b1538;
   --px:"Barlow","Helvetica Neue",Arial,sans-serif; --hd:"Oswald","Barlow Semi Condensed","Arial Narrow",sans-serif; --mono:"Barlow Semi Condensed","Barlow",Arial,sans-serif;
 }
@@ -17,7 +17,7 @@ body.labl, body.labl.day, body.labl.night, body.labl.redlight{
   --bg:var(--navy); --casing:var(--navy2); --casing2:#132565; --rust:var(--edge); --stain:rgba(240,120,32,.08);
   --ph:var(--orange); --ph2:#ff9a4a; --phd:#9a4d14; --phdd:#3a2410; --glass:#0b1740;
   --amber:var(--gold); --amberd:#8a6a1c; --red:#ff5a4e; --redd:#8a1f18; --blood:#5a1410;
-  --bone:#f4f6fb; --bone-dim:#aab6dc; --glow:var(--orange); --ore:var(--gold); --blood2:var(--red); --clot:#1a0a2a;
+  --bone:#f4f6fb; --bone-dim:#c0cbea; --glow:var(--orange); --ore:var(--gold); --blood2:var(--red); --clot:#1a0a2a;
   --glowc:240,120,32; --amberc:255,211,106; --redc:255,90,78; --screen1:#162a6e; --screen2:#0f1f5c; --screen3:#0a1540; --ink:#0b1538;
   --px:"Barlow","Helvetica Neue",Arial,sans-serif; --hd:"Oswald","Barlow Semi Condensed","Arial Narrow",sans-serif; --mono:"Barlow Semi Condensed","Barlow",Arial,sans-serif;
 }
@@ -55,7 +55,7 @@ body.labl .btn{font-family:var(--hd); font-weight:500; text-transform:uppercase;
 body.labl .btn:active{background:#fff; color:var(--navy); transform:translateY(1px)}
 body.labl .btn.go{background:var(--orange); border-color:var(--orange); color:#fff; text-shadow:none; box-shadow:0 3px 0 var(--orange2)}
 body.labl .btn.go:active{background:var(--orange2); color:#fff}
-body.labl .btn.small{font-size:calc(15px*var(--tx)); min-height:40px; padding:4px 10px; border-width:1.5px}
+body.labl .btn.small{font-size:calc(15px*var(--tx)); min-height:48px; padding:4px 10px; border-width:1.5px}
 body.labl .btn.on, body.labl .btn.small.on{background:#fff; color:var(--navy); border-color:#fff}
 body.labl .btn.untr{border-style:solid; border-color:var(--gold); color:var(--gold); background:rgba(255,211,106,.08)}
 body.labl .btn.untr::before{content:""}
@@ -292,4 +292,8 @@ body.labl .st-marker{min-height:140px;border:4px solid var(--tc);background:colo
 body.labl .st-marker b{font-family:var(--hd);font-size:calc(64px*var(--tx));line-height:1;color:#fff} body.labl .st-marker span{font-family:var(--hd);font-size:calc(18px*var(--tx));color:var(--tc);text-transform:uppercase}
 body.labl .st-count{font-family:var(--hd);font-size:calc(32px*var(--tx));text-align:center;color:var(--gold);margin:8px 0}
 body.labl .labl-chapter{border:2px solid var(--edge);border-radius:10px;padding:8px 10px;margin:10px 0}
+/* Phase 8: every tap target at least 48 px */
+body.labl .btn{min-height:48px}
+body.labl .labl-chip{min-height:48px}
+body.labl .labl-chip.mini{min-height:30px}
 </style>

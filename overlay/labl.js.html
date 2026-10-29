@@ -30,7 +30,8 @@ function lablCfg() {
     everyday: c.everyday || null,      // every-day packing list override
     mg: c.mg === "story" ? "story" : "arena",  // Mission Tablet timing profile outside the arena (Phase 4)
     seasonNames: c.seasonNames && typeof c.seasonNames === "object" ? c.seasonNames : {},  // "2026 H2" → display name (Phase 5)
-    stories: Array.isArray(c.stories) ? c.stories : null   // the story library (Phase 7)
+    stories: Array.isArray(c.stories) ? c.stories : null,  // the story library (Phase 7)
+    snd: c.snd && typeof c.snd === "object" ? c.snd : {}   // voice callouts (Phase 8)
   };
 }
 function lablCfgSet(patch) {
@@ -374,6 +375,8 @@ function lablSettingsTab(say) {
     plate(el("h2", {}, "Game modes offered"), kp("Untick a mode to hide it from the Day plan and the round log.", "color:var(--bone-dim)"), el("div", { class: "labl-modes" }, ...modeRows)),
     plate(el("h2", {}, "Gear"), kp("What each mode needs on the field. The Day plan totals these into the packing list.", "color:var(--bone-dim)"), lablGearSettings(say)),
     plate(el("h2", {}, "Tags and outs decide the winner in…"), kp("In these modes the winner step is the tags/outs grid: most tags, then fewest outs, and the Board Member confirms. Elsewhere the grid is optional.", "color:var(--bone-dim)"), el("div", { class: "labl-modes" }, ...statRows)),
+    plate(el("h2", {}, "Voice callouts"), lablSoundSettings(say)),
+    plate(el("h2", {}, "Help · Board Member quick guide"), lablHelp()),
     plate(el("h2", {}, "Screen & sound"), screenSoundFold()));
 }
 
@@ -1643,6 +1646,137 @@ bbRunMode = function (it, run, P, T, Pl, unlocked, redraw, say, RT) {
   }
   return EP4_bbRunMode(it, run, P, T, Pl, unlocked, redraw, say, RT);
 };
+/* ============ VOICE CALLOUTS + ANDROID HARDENING (Phase 8) ============
+   Spoken callouts through speechSynthesis, queued so lines never overlap, sitting beside (or instead of) EP's synth
+   tones per callout. A recorded clip attached to a callout (IndexedDB) plays instead of the device voice. */
+const LABL_CALLS = [
+  ["round", "Round start", "Round two. Three, two, one, action!"],
+  ["min", "One minute", "One minute"],
+  ["ten", "Ten seconds", "Ten seconds"],
+  ["end", "Time", "Time!"],
+  ["logged", "Round logged", "Red takes round two / Blue wins the mode, two to one"],
+  ["wave", "Respawn", "Respawn"],
+  ["hill", "Hill moves", "Hill moves in fifteen"],
+  ["next", "Next up", "Next up: Capture the Flag"],
+  ["sweep", "Dart sweep", "Dart sweep"]
+];
+const LABL_CALL_TONE = { round: "cd", go: "go", min: "min", ten: "tick", end: "end", wave: "wave", hill: "check", swap: "swap" };
+function lablSnd() {
+  const c = lablCfg().snd || {};
+  return { voice: c.voice !== false, voiceName: c.voiceName || "", rate: +c.rate || 1, vol: c.vol == null ? 1 : +c.vol, per: c.per && typeof c.per === "object" ? c.per : {} };
+}
+const lablCallMode = key => lablSnd().per[key] || "both";   // "voice" | "tone" | "both"
+/* the queue: one utterance at a time, in order; a clip first when one is attached */
+const LABL_VQ = []; let LABL_VBUSY = false;
+function lablVoiceNext() {
+  if (LABL_VBUSY || !LABL_VQ.length) return;
+  const { key, text } = LABL_VQ.shift(); LABL_VBUSY = true;
+  const done = () => { LABL_VBUSY = false; setTimeout(lablVoiceNext, 120); };
+  lablClipGet(key).then(blob => {
+    if (blob) { const a = new Audio(URL.createObjectURL(blob)); a.volume = lablSnd().vol; a.onended = a.onerror = done; a.play().catch(done); return; }
+    if (!("speechSynthesis" in window)) return done();
+    const u = new SpeechSynthesisUtterance(text), S = lablSnd();
+    u.rate = S.rate; u.volume = S.vol;
+    const v = S.voiceName && speechSynthesis.getVoices().find(x => x.name === S.voiceName); if (v) u.voice = v;
+    u.onend = u.onerror = done;
+    try { speechSynthesis.speak(u); } catch (e) { done(); }
+    setTimeout(() => { if (LABL_VBUSY && speechSynthesis.speaking === false) done(); }, 8000);   // a voice that never fires onend
+  });
+}
+function lablSay(key, text) {
+  const S = lablSnd(); if (!S.voice) return; const m = lablCallMode(key); if (m === "tone") return;
+  LABL_VQ.push({ key, text: text || (LABL_CALLS.find(c => c[0] === key) || [])[2] || key });
+  if (LABL_VQ.length > 6) LABL_VQ.splice(0, LABL_VQ.length - 6);
+  lablVoiceNext();
+}
+const lablToneOn = key => lablCallMode(key) !== "voice";
+/* recorded clips in IndexedDB */
+function lablClipDb() { return new Promise((res, rej) => { try { const r = indexedDB.open("labl-clips", 1); r.onupgradeneeded = () => r.result.createObjectStore("clips"); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); } catch (e) { rej(e); } }); }
+function lablClipGet(key) { return lablClipDb().then(db => new Promise(res => { const r = db.transaction("clips").objectStore("clips").get(key); r.onsuccess = () => res(r.result || null); r.onerror = () => res(null); })).catch(() => null); }
+function lablClipSet(key, blob) { return lablClipDb().then(db => new Promise(res => { const st = db.transaction("clips", "readwrite").objectStore("clips"); const r = blob ? st.put(blob, key) : st.delete(key); r.onsuccess = () => res(true); r.onerror = () => res(false); })).catch(() => false); }
+/* the hooks: EP's tones become voice + tone, tone, or voice per callout */
+const LABL_WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"];
+const lablNum = n => LABL_WORDS[n] || String(n);
+let LABL_CD_AT = 0, LABL_TEN_AT = 0; let LABL_VOICE_HINT = "";
+(function () {
+  const EP = Object.assign({}, BBSND);
+  BBSND.cd = () => { const now = Date.now(); if (now - LABL_CD_AT > 4000) { const run = BBR.get(); lablSay("round", "Round " + lablNum(run.rnd || 1) + "."); } LABL_CD_AT = now; if (lablToneOn("round")) EP.cd(); };
+  BBSND.go = () => { if (lablToneOn("round")) EP.go(); lablSay("round", "Action!"); };
+  BBSND.min = () => { if (lablToneOn("min")) EP.min(); lablSay("min"); };
+  BBSND.tick = () => { if (lablToneOn("ten")) EP.tick(); const now = Date.now(); if (now - LABL_TEN_AT > 12000) lablSay("ten"); LABL_TEN_AT = now; };
+  BBSND.end = () => { if (lablToneOn("end")) EP.end(); lablSay("end"); };
+  BBSND.wave = () => { if (lablToneOn("wave")) EP.wave(); lablSay("wave"); };
+  BBSND.check = () => { if (lablToneOn("hill")) EP.check(); lablSay("hill", LABL_VOICE_HINT === "hill" ? "Hill moves in fifteen" : "Flag check"); };
+  BBSND.swap = () => { if (lablToneOn("hill")) EP.swap(); lablSay("hill", LABL_VOICE_HINT === "hill" ? "Hill moves" : "Swap sides"); };
+})();
+const EP5_bbUndoToast = bbUndoToast;
+bbUndoToast = function (text, undo) { lablSay("logged", String(text).replace(/–/g, " to ").replace(/·/g, ",").replace(/\bwon\b/, "takes it").replace(/round (\d)/i, (m, d) => "round " + lablNum(+d))); return EP5_bbUndoToast(text, undo); };
+const EP5_lablNextUp = lablNextUp;
+lablNextUp = function () { const r = EP5_lablNextUp(); const D = lablNextUpData(); if (D && !D.started) { const key = EVENT_SALT + "|" + D.it.id + "|" + D.rnd; if (window.LABL_NEXT_SAID !== key) { window.LABL_NEXT_SAID = key; lablSay("next", "Next up: " + D.it.mode + (D.n > 1 ? ", round " + lablNum(D.rnd) : "")); } } return r; };
+const EP5_bbRunBreak = bbRunBreak;
+bbRunBreak = function (it, run, row, unlocked, redraw, P) { const box = EP5_bbRunBreak(it, run, row, unlocked, redraw, P); if ((it.kind === "sweep" || it.kind === "teardown") && window.LABL_SWEEP_SAID !== it.id) { window.LABL_SWEEP_SAID = it.id; lablSay("sweep", it.kind === "teardown" ? "Dart sweep and teardown" : "Dart sweep"); } return box; };
+{ const EPHp = lablStHp; lablStHp = function () { LABL_VOICE_HINT = "hill"; const r = EPHp(); return r; }; }
+const EP5_arenaPage = arenaPage;
+arenaPage = function () { if (!(NAV.get("g") === "bbterm" && NAV.get("m") === "hp2")) LABL_VOICE_HINT = ""; return EP5_arenaPage(); };
+/* ---- Settings › Sound ---- */
+function lablSoundSettings(say) {
+  const S = lablSnd(), box = el("div");
+  const on = el("input", { type: "checkbox" }); on.checked = S.voice; on.addEventListener("change", () => { lablCfgSet({ snd: Object.assign({}, S, { voice: on.checked }) }); });
+  const voices = ("speechSynthesis" in window ? speechSynthesis.getVoices() : []).filter(v => /^en/i.test(v.lang));
+  const vs = el("select", { class: "labl-in" }, el("option", { value: "" }, "Device default voice"), ...voices.map(v => el("option", { value: v.name }, v.name + " (" + v.lang + ")"))); vs.value = S.voiceName; vs.addEventListener("change", () => lablCfgSet({ snd: Object.assign({}, lablSnd(), { voiceName: vs.value }) }));
+  const rate = el("input", { type: "range", min: "0.7", max: "1.4", step: "0.05", value: String(S.rate) }); rate.addEventListener("change", () => lablCfgSet({ snd: Object.assign({}, lablSnd(), { rate: +rate.value }) }));
+  const vol = el("input", { type: "range", min: "0", max: "1", step: "0.05", value: String(S.vol) }); vol.addEventListener("change", () => lablCfgSet({ snd: Object.assign({}, lablSnd(), { vol: +vol.value }) }));
+  const test = el("button", { class: "btn small go", onclick: () => { BBSND.cd(); setTimeout(BBSND.cd, 1000); setTimeout(BBSND.cd, 2000); setTimeout(BBSND.go, 3000); } }, "▶ Test sound");
+  const rows = LABL_CALLS.map(([key, label, sample]) => {
+    const mode = lablCallMode(key);
+    const chip = m => el("button", { class: "btn small labl-chip" + (mode === m ? " on" : ""), onclick: () => { const per = Object.assign({}, lablSnd().per, { [key]: m }); lablCfgSet({ snd: Object.assign({}, lablSnd(), { per }) }); route(); } }, m === "both" ? "Both" : m === "voice" ? "Voice" : "Tone");
+    const clipLbl = el("small", { style: "color:var(--bone-dim)" }, "");
+    lablClipGet(key).then(b => (clipLbl.textContent = b ? " · recorded clip attached" : ""));
+    const file = el("input", { type: "file", accept: "audio/*", style: "display:none" });
+    file.addEventListener("change", async () => { const f = file.files[0]; if (!f) return; const ok = await lablClipSet(key, f); say(ok ? "Clip attached to " + label + "." : "Couldn't store the clip.", !ok); route(); });
+    return el("div", { class: "labl-row", style: "flex-wrap:wrap" }, el("span", {}, el("b", {}, label), el("small", {}, " · " + sample), clipLbl),
+      el("span", { class: "row", style: "gap:6px;flex-wrap:wrap" }, chip("both"), chip("voice"), chip("tone"), el("button", { class: "btn small", onclick: () => lablSay(key, sample.split(" / ")[0]) }, "▶"), el("button", { class: "btn small", onclick: () => file.click() }, "🎙 Clip"), el("button", { class: "btn small", onclick: async () => { await lablClipSet(key, null); route(); } }, "✕ Clip"), file));
+  });
+  box.append(el("label", { class: "labl-chk" }, on, "Voice callouts (the tablet's own voice, offline once a voice is downloaded)"),
+    el("label", { class: "labl-lbl" }, "Voice", vs), el("div", { class: "row", style: "gap:14px;flex-wrap:wrap" }, el("label", { class: "labl-lbl", style: "flex:1" }, "Rate", rate), el("label", { class: "labl-lbl", style: "flex:1" }, "Volume", vol)), test,
+    el("div", { class: "labl-lbl2" }, "Per callout: Voice, Tone, or Both. A recorded clip replaces the device voice."), el("div", { class: "labl-roster" }, ...rows));
+  return box;
+}
+if ("speechSynthesis" in window) { try { speechSynthesis.getVoices(); speechSynthesis.onvoiceschanged = () => {}; } catch (e) {} }
+/* ---- Android hardening: wake lock on the run screen (re-acquired when the screen comes back), the back gesture guarded mid-round ---- */
+let LABL_WAKE = null;
+async function lablWake(on) {
+  try {
+    if (!on) { if (LABL_WAKE) { await LABL_WAKE.release(); LABL_WAKE = null; } return; }
+    if (!navigator.wakeLock || (LABL_WAKE && !LABL_WAKE.released)) return;
+    LABL_WAKE = await navigator.wakeLock.request("screen");
+    LABL_WAKE.addEventListener && LABL_WAKE.addEventListener("release", () => { LABL_WAKE = null; });
+  } catch (e) { LABL_WAKE = null; }
+}
+const lablOnRun = () => typeof arenaOn === "function" && arenaOn() && (NAV.get("g") === "bbrun" || NAV.get("g") === "bbterm") && !NAV.get("s");
+const EP5_bbRun = bbRun;
+bbRun = function () { const r = EP5_bbRun(); lablWake(true); return r; };
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { if (lablOnRun()) { lablWake(true); route(); } } });
+const lablRoundLive = () => { const run = BBR.get(); return !!(run.clk && run.clk.t0 && !run.clk.end); };
+window.addEventListener("popstate", () => {
+  if (typeof arenaOn === "function" && arenaOn() && lablRoundLive() && (!NAV.get("g") || NAV.get("g") !== "bbrun")) {
+    try { const u = new URL(location.href); u.search = "?g=bbrun"; history.pushState(null, "", u); } catch (e) {}
+    NAV = new URLSearchParams("g=bbrun"); if (typeof toast === "function") toast("Round in play: use the controls on screen."); route();
+  }
+});
+try { if (/^(https?|file):$/.test(location.protocol)) history.pushState(null, "", location.href); } catch (e) {}   // a buffer entry, so the first back gesture never leaves the app
+/* ---- Help (QUICKSTART) ---- */
+const LABL_QUICKSTART = [
+  ["Before you leave home", "Tablet and speaker charged. Open LABL from the home-screen icon. Settings › Backup: Storage says Protected. Roster complete. Day plan built (Build a full day or a story day). Open the Packing list, tick as you load the car."],
+  ["Opening the day", "Arena › Teams: tap everyone who's here, set blasters, Draw teams. Run: read the opening talk, Briefing done. The first block's rules card opens: read it, tap Rules read. Start the countdown."],
+  ["Running a mode", "The clock runs itself: one-minute warning, last ten, horn. After the horn tap the winner (stat modes: tags and outs, then the confirm button), pick how it ended. Next Up shows the players the next round; tap it to get your controls back. Start round N is ready at once."],
+  ["Objective stations", "On the run screen: Mini-game station (pick the game, Start, players tap RED plays / BLUE plays), Run Hardpoint here (tap who holds the live hill), Score Territories here (tap each marker at the horn). The result comes back to the run screen; tap to log it."],
+  ["Walk-ins", "+ Walk-in on the run screen: name, Add. They join the pool and the side that keeps the balance."],
+  ["Fixing a round", "Rounds tab › Edit on the round: winner, how it ended, who played, tags and outs, disputed note. Standings recompute."],
+  ["Ending the day", "The last item is Dart sweep & teardown. On That's the day, tap Send backup & results to Google Drive and pick Drive in the share sheet. The Day Champion is on the same card."]
+];
+function lablHelp() { return el("div", {}, ...LABL_QUICKSTART.map(([h, t]) => el("div", { style: "margin:8px 0" }, el("h3", {}, h.toUpperCase()), kp(t, "font-size:calc(16px*var(--tx))")))); }
+
 /* ---- Scoreboard (player-facing, mode "8") ---- */
 /* lablBoard is defined in the Phase 6 block above: rotating slides. */
 

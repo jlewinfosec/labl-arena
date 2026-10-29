@@ -15,6 +15,7 @@ node mg.js after                        # mini-games: palette, lockouts, tagged,
 node seasons.js                         # season ranking, Day Champion, both CSVs against hand-computed values
 node p6.js                              # Next Up (30 players, both sizes, no clipping) and the scoreboard slides
 node p7.js                              # story day, Hardpoint scored on the tablet, mini-game station win credits the side
+node mock.js                            # a whole mock game day end to end (wake lock, back gesture, walk-ins, edit, Drive share)
 ```
 
 ## Rules for changing anything
