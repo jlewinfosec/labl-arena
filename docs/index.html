@@ -1454,6 +1454,20 @@ body.labl .labl-time.ok{color:var(--orange)}
 body.labl .labl-time-lbl{font-family:var(--mono); font-size:calc(14px*var(--tx)); letter-spacing:.16em; color:var(--bone-dim); margin-bottom:8px}
 body.labl .labl-show{font-family:var(--hd); font-size:calc(30px*var(--tx)); color:var(--orange); margin:8px 0}
 body.labl .labl-cause{font-family:var(--mono); font-size:calc(15px*var(--tx)); letter-spacing:.16em; color:var(--red)}
+/* Phase 5: standings */
+body.labl .labl-rank{border-collapse:collapse;width:100%;font-family:var(--px);font-size:calc(17px*var(--tx))}
+body.labl .labl-rank th{text-align:left;padding:6px 8px;color:var(--orange);font-family:var(--mono);font-size:calc(12px*var(--tx));letter-spacing:.08em;border-bottom:2px solid var(--orange)}
+body.labl .labl-rank td{padding:7px 8px;border-bottom:1px solid var(--edge)}
+body.labl .labl-rank td.nm{font-family:var(--hd);text-transform:uppercase;font-size:calc(20px*var(--tx))}
+body.labl .labl-rank td.pts{font-family:var(--hd);font-size:calc(24px*var(--tx));color:var(--gold)}
+body.labl .labl-rank tr.top td{background:rgba(240,120,32,.12)}
+body.labl .labl-rank tr.top td.nm{color:var(--gold)}
+body.labl .labl-rank tr.dim td{opacity:.6}
+body.labl .labl-rank tr.line td{font-family:var(--mono);font-size:calc(12px*var(--tx));color:var(--orange);text-align:center;background:rgba(240,120,32,.08);border-bottom:2px dashed var(--orange)}
+body.labl .labl-champ{border:3px solid var(--gold);border-radius:12px;padding:10px 14px;margin:8px 0;background:rgba(255,211,106,.08)}
+body.labl .labl-champ b{display:block;font-family:var(--hd);font-size:calc(40px*var(--tx));line-height:1;color:var(--gold);text-transform:uppercase}
+body.labl .labl-champ span{font-family:var(--px);color:var(--bone-dim)}
+body.labl .labl-champs .labl-row b{font-family:var(--hd);color:var(--gold)}
 </style>
 
 </head>
@@ -1464,7 +1478,7 @@ body.labl .labl-cause{font-family:var(--mono); font-size:calc(15px*var(--tx)); l
 <script>
 /* ============ LABL PRE-SHIMS: globals the dropped EP modules used to provide ============
    Kept deliberately small and honest: each one returns the "nothing's there" value the EP code already handles. */
-window.LABL = { version: "0.6.0", name: "LABL Arena" };
+window.LABL = { version: "0.7.0", name: "LABL Arena" };
 var NATIVE = { on: false, plugin: () => null, haptic: () => {} };
 var EPSYNC = { on: false, isMain: () => true, main: () => true };
 var RAD_REMOTE = null, WX_REMOTE = null, FIELD_REMOTE = null, ALERT_REMOTE = null, BRK_REMOTE = null, BC_REMOTE = null;
@@ -27362,7 +27376,7 @@ const BB_ONE_WINNER = [
 "One Man Army"
 ];
 // does this round count toward a squad's Survivor Point standing? (D-227, D-244)
-const bbSpRound = r => !!r && r.fmt !== "ffa" && !BB_ONE_WINNER.includes(r.mode) && !r.large && !(r.fmt === "teams" && typeof r.win === "string");
+const bbSpRound = r => !!r && r.comp === true && r.fmt !== "ffa" && !BB_ONE_WINNER.includes(r.mode) && !r.large && !(r.fmt === "teams" && typeof r.win === "string");
 const bbRating = (w, n) => (w + 2) / (n + 4); // D-178 / D-226: a win rate shrunk toward 50%
 function bbCfg() {
 const b = (loadCfg() || {}).bb || {},
@@ -39258,7 +39272,7 @@ const notes = {
 brief:
 "",
 sweep:
-"The game is stopped. Everyone picks up darts. Most darts = 1 temporary League Point (a Board Member gives it at LABL HQ: Board Member › Today › Give temporary SP).",
+"The game is stopped. Everyone picks up darts. Most darts collected gets a shout-out at the close.",
 lunch: "60 minutes. Everyone back to LABL HQ. Sync the rounds while the tablet has the Wi-Fi.",
 dinner: min + " minutes (arena days: " + BB_DAY.dinner + "). Everyone back to LABL HQ. Sync the rounds while the tablet has the Wi-Fi.",
 water: "Water and shade. Back in a few minutes.",
@@ -41306,7 +41320,8 @@ function lablCfg() {
     persist: c.persist || "",          // navigator.storage.persist() result: yes / no / na
     gear: c.gear || {},                // per-mode prop overrides (Phase 3)
     everyday: c.everyday || null,      // every-day packing list override
-    mg: c.mg === "story" ? "story" : "arena"   // Mission Tablet timing profile outside the arena (Phase 4)
+    mg: c.mg === "story" ? "story" : "arena",  // Mission Tablet timing profile outside the arena (Phase 4)
+    seasonNames: c.seasonNames && typeof c.seasonNames === "object" ? c.seasonNames : {}   // "2026 H2" → display name (Phase 5)
   };
 }
 function lablCfgSet(patch) {
@@ -41333,16 +41348,6 @@ lablStoryApply();
 hubBase = () => "";
 bbSyncStrip = () => el("span", { class: "bb-sync-off" });
 bbUnsynced = () => [];
-/* League Points: one per event to the top qualified squad (and large-field MVPs), kept in ep_bb.award */
-function lablPointsPlate() {
-  const A = Object.entries(BBS.get().award || {}).filter(([, a]) => !a.era || a.era === ERA);
-  const bySq = {};
-  A.forEach(([ev, a]) => (a.sqs || []).forEach(s => (bySq[s] = (bySq[s] || 0) + 1)));
-  const rows = Object.entries(bySq).sort((x, y) => y[1] - x[1]);
-  return plate(el("h2", {}, "League Points · " + ERA),
-    rows.length ? el("table", { class: "labl-table" }, el("tr", {}, el("th", {}, "#"), el("th", {}, "Squad"), el("th", {}, "Points")), ...rows.map(([s, n], i) => el("tr", {}, el("td", {}, String(i + 1)), el("td", {}, s), el("td", {}, String(n))))) : kp("No League Points awarded yet this season. The top qualified squad of each event day earns one (Arena › Standings).", "color:var(--bone-dim)"),
-    A.length ? kp(A.map(([ev, a]) => ev + ": " + a.sq + (a.mvpNames && a.mvpNames.length ? " · MVPs " + a.mvpNames.join(", ") : "")).join(" · "), "color:var(--bone-dim);font-size:calc(13px*var(--tx))") : null);
-}
 /* ---- one PIN ---- */
 arenaPinCheck = v => checkDirPin(v);
 const lablUnlocked = () => (DIR_OK && Date.now() - DIR_LAST < bbCfg().idleMin * 60000) || (typeof arenaUnlocked === "function" && arenaUnlocked());
@@ -41479,20 +41484,19 @@ window.addEventListener("load", () => { if (lablCfg().setup) lablPersist(); });
 /* ---- first run ---- */
 function lablFirstRun() {
   const ev = el("input", { type: "text", class: "labl-in", value: "LABL " + new Date().toLocaleDateString("en-CA"), maxlength: "40" });
-  const se = el("input", { type: "text", class: "labl-in", value: ERA || "Season 1", maxlength: "30" });
   const p1 = dirPinInput("NEW PIN"), p2 = dirPinInput("AGAIN"), out = el("div", { class: "msg bad" });
   const okB = el("button", { class: "btn go", style: "width:100%;min-height:60px;margin-top:10px" }, "Set up this tablet");
   okB.addEventListener("click", () => {
     if (!/^\d{4}$/.test(p1.value) || p1.value !== p2.value) { out.textContent = "> Type the same 4-digit PIN twice."; SFX.bad(); return; }
     const v = loadCfg(); v.dirPin = p1.value; v.offPins = Object.assign({}, v.offPins || {}, { arena: p1.value });
-    v.salt = ev.value.trim() || "LABL"; v.era = se.value.trim() || "Season 1";
+    v.salt = ev.value.trim() || "LABL";
     v.labl = Object.assign({}, v.labl || {}, { setup: true });
     v.bb = Object.assign({ min: 3, share: 0.5, charMin: 3, eraMin: 10, idleMin: 10 }, v.bb || {});
     saveCfg(v); DIR_OK = true; DIR_LAST = Date.now(); SFX.good(); lablPersist(); go({ g: "home" });
   });
   app.append(el("div", { class: "labl-splash" }, epLogo({}), el("h1", { class: "labl-h1" }, "LABL ARENA"), el("div", { class: "labl-kicker" }, "LOUISIANA BLASTER LEAGUE · GAME DAY TABLET")),
     plate(el("h3", {}, "First run"), el("h1", {}, "Set up this tablet"),
-      el("label", { class: "labl-lbl" }, "Event name", ev), el("label", { class: "labl-lbl" }, "Season", se),
+      el("label", { class: "labl-lbl" }, "Event name", ev), kp("Season: " + lablSeasonName(lablSeasonOf(Date.now())) + " (seasons run January to June and July to December).", "color:var(--bone-dim)"),
       el("label", { class: "labl-lbl" }, "Board Member PIN (4 digits)", p1), el("label", { class: "labl-lbl" }, "PIN again", p2),
       kp("One PIN opens everything: the Arena, the Mission Tablet setup, and this panel. Change it any time under Settings.", "color:var(--bone-dim)"),
       okB, out));
@@ -41624,9 +41628,9 @@ function lablStoryTab(say) {
 function lablSettingsTab(say) {
   const v = loadCfg();
   const ev = el("input", { type: "text", class: "labl-in", value: EVENT_SALT, maxlength: "40" });
-  const se = el("input", { type: "text", class: "labl-in", value: ERA, maxlength: "30" });
+  const se = el("input", { type: "text", class: "labl-in", value: lablCfg().seasonNames[ERA] || "", maxlength: "30", placeholder: ERA });
   const saveNames = el("button", { class: "btn go" }, "Save");
-  saveNames.addEventListener("click", () => { const c = loadCfg(); c.salt = ev.value.trim() || "LABL"; c.era = se.value.trim() || "Season 1"; saveCfg(c); SFX.good(); say("Event and season saved."); });
+  saveNames.addEventListener("click", () => { const c = loadCfg(); c.salt = ev.value.trim() || "LABL"; saveCfg(c); const names = Object.assign({}, lablCfg().seasonNames); if (se.value.trim()) names[ERA] = se.value.trim().slice(0, 30); else delete names[ERA]; lablCfgSet({ seasonNames: names }); SFX.good(); say("Saved."); });
   const newEv = el("button", { class: "btn" }, "Start a new event day");
   newEv.addEventListener("click", () => dirApprove("Settings", "New event day?", [kp("Today's rounds stay in the season standings. The day plan and run state reset; the roster and teams stay.")], "New day", () => {
     const c = loadCfg(); c.salt = "LABL " + new Date().toLocaleDateString("en-CA"); saveCfg(c);
@@ -41649,9 +41653,9 @@ function lablSettingsTab(say) {
   file.addEventListener("change", () => { const f = file.files[0]; if (!f) return; const rd = new FileReader(); rd.onload = () => { try { const j = JSON.parse(rd.result); if (!j || !j.data) throw 0; dirApprove("Settings", "Restore this backup?", [kp("Everything on this tablet is replaced by the backup from " + new Date(j.at).toLocaleString() + ".")], "Restore", () => { Object.entries(j.data).forEach(([k, val]) => localStorage.setItem(k, val)); location.reload(); }); } catch (e) { say("That file isn't a LABL backup.", true); } }; rd.readAsText(f); });
   const rs = el("button", { class: "btn", onclick: () => file.click() }, "⬆ Restore a backup");
   return el("div", {},
-    plate(el("h2", {}, "Event & season"), el("label", { class: "labl-lbl" }, "Event name", ev), el("label", { class: "labl-lbl" }, "Season", se), el("div", { class: "row", style: "gap:8px" }, saveNames, newEv)),
-    plate(el("h2", {}, "Results"), kp("A CSV of every round, one row per round, with the per-player tags and outs when they were logged.", "color:var(--bone-dim)"),
-      el("div", { class: "row", style: "gap:8px" }, el("button", { class: "btn go", onclick: () => lablCsv(false) }, "⬇ This event"), el("button", { class: "btn", onclick: () => lablCsv(true) }, "⬇ Whole season"))),
+    plate(el("h2", {}, "Event & season"), el("label", { class: "labl-lbl" }, "Event name", ev), el("label", { class: "labl-lbl" }, "Display name for the current season (" + ERA + ")", se), kp("Seasons come from the date: January to June is H1, July to December is H2. A display name is optional.", "color:var(--bone-dim)"), el("div", { class: "row", style: "gap:8px" }, saveNames, newEv)),
+    plate(el("h2", {}, "Results"), kp("Rounds: one row per round (how it ended, competitive, edited, per-player tags and outs). Player-rounds: one row per player per round, ready for a pivot table.", "color:var(--bone-dim)"),
+      el("div", { class: "row", style: "gap:8px;flex-wrap:wrap" }, el("button", { class: "btn go", onclick: () => lablCsv(false) }, "⬇ Rounds · this event"), el("button", { class: "btn", onclick: () => lablCsv(true) }, "⬇ Rounds · season"), el("button", { class: "btn", onclick: () => { const f = lablPlayerRoundsFile(false); lablDownload(f.name, f.text, f.type); } }, "⬇ Player-rounds · this event"), el("button", { class: "btn", onclick: () => { const f = lablPlayerRoundsFile(true); lablDownload(f.name, f.text, f.type); } }, "⬇ Player-rounds · season"))),
     plate(el("h2", {}, "Backup"), kp("Everything lives in this browser. A cleared browser loses the season, so back up after every event day. Send to Google Drive shares the backup and this event's CSV together through the Android share sheet.", "color:var(--amber)"),
       el("div", { class: "row", style: "gap:8px;flex-wrap:wrap" }, drive, bk, rs, file),
       kp("Storage: " + persistTxt, "color:var(--bone-dim);margin-top:8px"),
@@ -41687,8 +41691,8 @@ async function lablShareFiles(files, title) {
 function lablDriveButton(label, say) {
   const b = el("button", { class: "btn go", style: "min-height:52px" }, label || "☁ Send to Google Drive");
   b.addEventListener("click", async () => {
-    const r = await lablShareFiles([lablBackupFile(), lablCsvFile(false)], "LABL Arena backup · " + EVENT_SALT);
-    const t = r === "shared" ? "Sent. Pick Google Drive in the share sheet if you haven't yet." : r === "cancelled" ? "Share cancelled." : "Sharing isn't available here, so the backup and CSV went to the tablet's downloads.";
+    const r = await lablShareFiles([lablBackupFile(), lablCsvFile(false), lablPlayerRoundsFile(false)], "LABL Arena backup · " + EVENT_SALT);
+    const t = r === "shared" ? "Sent. Pick Google Drive in the share sheet if you haven't yet." : r === "cancelled" ? "Share cancelled." : "Sharing isn't available here, so the backup and both CSVs went to the tablet's downloads.";
     if (say) say(t, r === "cancelled"); else if (typeof toast === "function") toast(t);
   });
   return b;
@@ -41697,7 +41701,7 @@ function lablCsv(season) { const f = lablCsvFile(season); lablDownload(f.name, f
 function lablCsvFile(season) {
   const R = bbRoundsAll().filter(r => (season ? r.era === ERA : r.ev === EVENT_SALT));
   const q = s => '"' + String(s == null ? "" : s).replace(/"/g, '""') + '"';
-  const head = ["season", "event", "date", "time", "block", "round", "mode", "format", "side_a", "side_b", "winner", "objectives", "mvp", "disputed", "player_stats", "round_id"];
+  const head = ["season", "event", "date", "time", "block", "round", "mode", "format", "side_a", "side_b", "winner", "how", "competitive", "objectives", "mvp", "disputed", "edited", "player_stats", "round_id"];
   let blk = 0, lastMode = null, rn = 0;
   const rows = R.map(r => {
     if (r.mode !== lastMode) { blk++; rn = 0; lastMode = r.mode; } rn++;
@@ -41706,7 +41710,7 @@ function lablCsvFile(season) {
     const win = r.win === -1 ? "Draw" : typeof r.win === "number" ? ((r.teams || [])[r.win] || {}).n || r.win : names(r.win);
     const stats = Object.entries(r.st || {}).map(([id, s]) => names(id) + ":" + (s[0] || 0) + "t/" + (s[1] || 0) + "o").join(" ");
     const d = new Date(r.t);
-    return [r.era, r.ev, d.toLocaleDateString("en-CA"), d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }), blk, rn, r.mode, r.fmt, sides[0] || "", sides[1] || "", win, (r.obj || []).join(" / "), (r.mvp || []).map(names).join("; "), r.dsp ? 1 : 0, stats, r.id].map(q).join(",");
+    return [r.era, r.ev, d.toLocaleDateString("en-CA"), d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }), blk, rn, r.mode, r.fmt, sides[0] || "", sides[1] || "", win, LABL_HOW_LABEL[r.how] || "", r.comp ? 1 : 0, (r.obj || []).join(" / "), (r.mvp || []).map(names).join("; "), r.dsp ? 1 : 0, r.ed && r.ed.length ? r.ed.length : 0, stats, r.id].map(q).join(",");
   });
   return { name: (season ? "labl-season-" + ERA : "labl-" + EVENT_SALT).replace(/[^a-z0-9-]+/gi, "_") + ".csv", text: [head.join(","), ...rows].join("\r\n"), type: "text/csv" };
 }
@@ -42385,10 +42389,155 @@ play = function (id, d, practice, opts) {
   return r;
 };
 
+/* ============ SEASON SCORING (Phase 5) ============
+   Seasons come from the date (H1 = January to June, H2 = July to December). Every player is ranked on season points:
+   1 per round won, 0 for a loss or draw; ranked after 15 rounds; ties on win rate, then tags per out. Day Champion = most
+   round wins at an event (ties on tags). No League Points. Squads only from competitive rounds. */
+const LABL_RANK_MIN = 15;
+function lablSeasonOf(t) { const d = new Date(t || Date.now()); return d.getFullYear() + (d.getMonth() < 6 ? " H1" : " H2"); }
+function lablSeasonName(key) { const n = lablCfg().seasonNames[key]; return n ? n + " (" + key + ")" : key; }
+/* the current season replaces EP's typed Era everywhere (ERA is read all over EP's standings code) */
+const EP_loadCfg = loadCfg;
+loadCfg = function () { const v = EP_loadCfg(); ERA = lablSeasonOf(Date.now()); return v; };
+ERA = lablSeasonOf(Date.now());
+/* rounds saved before 0.7.0 carry the typed season: relabel them from their dates, once */
+(function () {
+  const B = BBS.get(); if (B.lablSeasons === 1) return;
+  Object.values(B.rounds).forEach(r => { r.era = lablSeasonOf(r.t); });
+  B.lablSeasons = 1; BBS.save(B);
+})();
+const EP2_bbSaveRound = bbSaveRound;
+bbSaveRound = function (r) { r.era = lablSeasonOf(r.t); if (r.comp == null) r.comp = lablCompetitive(lablCurItem()); return EP2_bbSaveRound(r); };
+/* season points per player; opt.min = rounds needed to rank (15 for a season, 1 for an event) */
+function lablRank(rounds, opt = {}) {
+  const min = opt.min != null ? opt.min : LABL_RANK_MIN, P = {};
+  const get = id => (P[id] = P[id] || { id, n: id, sq: "", pts: 0, rounds: 0, draws: 0, tags: 0, outs: 0, mvp: 0 });
+  rounds.forEach(r => {
+    const all = r.fmt === "ffa" ? r.p || [] : [].concat(...(r.teams || []).map(t => t.m));
+    const winners = r.fmt === "ffa" ? (r.win ? [r.win] : []) : typeof r.win === "string" ? [r.win] : r.win >= 0 && r.teams[r.win] ? r.teams[r.win].m : [];
+    const W = new Set(winners);
+    all.forEach(id => { const x = get(id); x.rounds++; if (W.has(id)) x.pts++; if (r.win === -1) x.draws++; x.n = (r.nm || {})[id] || x.n; x.sq = (r.sq || {})[id] || x.sq; });
+    Object.entries(r.st || {}).forEach(([id, v]) => { const x = get(id); x.tags += v[0] || 0; x.outs += v[1] || 0; });
+    (r.mvp || []).forEach(id => get(id).mvp++);
+  });
+  const L = Object.values(P).map(x => Object.assign(x, { rate: x.rounds ? x.pts / x.rounds : 0, tpo: x.tags / Math.max(1, x.outs), q: x.rounds >= min }));
+  L.sort((a, b) => b.q - a.q || b.pts - a.pts || b.rate - a.rate || b.tpo - a.tpo || a.n.localeCompare(b.n));
+  let rank = 0; L.forEach(x => { x.rank = x.q ? ++rank : 0; });
+  return L;
+}
+/* Day Champion: most round wins at an event; ties on tags; null when nobody won a round */
+function lablDayChampion(evRounds) {
+  const L = lablRank(evRounds, { min: 1 }).filter(x => x.pts > 0).sort((a, b) => b.pts - a.pts || b.tags - a.tags || a.n.localeCompare(b.n));
+  if (!L.length) return null;
+  const tied = L.filter(x => x.pts === L[0].pts && x.tags === L[0].tags);
+  return { id: L[0].id, n: L[0].n, pts: L[0].pts, tags: L[0].tags, tied: tied.map(x => x.n), rounds: evRounds.length };
+}
+/* every event of a season with its champion, newest first */
+function lablDayChampions(seasonRounds) {
+  const byEv = {}; seasonRounds.forEach(r => (byEv[r.ev] = byEv[r.ev] || []).push(r));
+  return Object.entries(byEv).map(([ev, R]) => ({ ev, t: Math.min(...R.map(r => r.t)), champ: lablDayChampion(R) })).sort((a, b) => b.t - a.t);
+}
+/* ---- titles: EP's, per player per season; squads from competitive rounds only; Day Champion added; no League Point title ---- */
+bbTitlesNow = function (R) {
+  const all = R || bbRoundsAll(), B = BBS.get(), season = all.filter(r => r.era === ERA);
+  const toff = Object.assign({}, B.toff || {}, { evchamp: true, sqera: true });
+  const list = bbTitlesCompute(season, { all, toff, custom: B.custom, era: ERA });
+  if (!(B.toff || {}).sqera) list.push(...bbTitlesCompute(season.filter(r => r.comp === true), { toff: Object.assign({}, B.toff || {}, { champ: true, show: true, iron: true, rookie: true, spec: true, evchamp: true }), era: ERA }));
+  if (!(B.toff || {}).daych) lablDayChampions(season).forEach(x => { if (x.champ) list.push({ id: "daych:" + x.ev, label: "Day Champion", desc: "Most round wins at " + x.ev, who: "c", to: [x.champ.id], n: x.champ.n + " · " + x.ev }); });
+  return list;
+};
+BB_TITLE_DEFS.push({ id: "daych", label: "Day Champion", who: "c", desc: "Most round wins at an event (ties on tags)" });
+{ const i = BB_TITLE_DEFS.findIndex(d => d.id === "evchamp"); if (i >= 0) BB_TITLE_DEFS.splice(i, 1); }
+/* ---- the standings table ---- */
+function lablRankTable(L, opt = {}) {
+  const TT = opt.titles || { c: {} }, badge = id => (TT.c[id] && TT.c[id].length ? " 🏅 " + TT.c[id].join(" · ") : "");
+  const rows = L.slice(0, opt.max || 60);
+  const line = rows.findIndex(x => !x.q);
+  const tbl = el("table", { class: "labl-rank" },
+    el("tr", {}, ...["#", "PLAYER", "PTS", "ROUNDS", "WIN %", "TAGS", "OUTS"].map(h => el("th", {}, h))));
+  rows.forEach((x, i) => {
+    if (i === line && line > 0 && opt.min > 1) tbl.append(el("tr", { class: "line" }, el("td", { colspan: "7" }, "Ranked after " + opt.min + " rounds this season · below the line until then")));
+    else if (i === 0 && line === 0 && opt.min > 1) tbl.append(el("tr", { class: "line" }, el("td", { colspan: "7" }, "Nobody has " + opt.min + " rounds yet; ranked after " + opt.min)));
+    tbl.append(el("tr", { class: x.q ? (x.rank === 1 ? "top" : "") : "dim" }, el("td", {}, x.q ? String(x.rank) : "–"), el("td", { class: "nm" }, x.n + (opt.squads && x.sq ? " (" + x.sq + ")" : "") + badge(x.id)), el("td", { class: "pts" }, String(x.pts)), el("td", {}, String(x.rounds)), el("td", {}, bbPct(x.rate)), el("td", {}, String(x.tags)), el("td", {}, String(x.outs))));
+  });
+  return el("div", { class: "scroll-x", style: "overflow-x:auto" }, tbl);
+}
+function lablSquadTable(rounds, TT) {
+  const comp = rounds.filter(r => r.comp === true);
+  if (!comp.length) return null;
+  const S = bbStats(comp, { min: 1, share: 0 }).squads.filter(s => s.mr > 0);
+  if (!S.length) return null;
+  const badge = n => (TT && TT.s[n] && TT.s[n].length ? " 🏅 " + TT.s[n].join(" · ") : "");
+  return el("div", {}, el("h2", {}, "Squads · competitive rounds"), kp("Win rate across every member's competitive rounds, so squad size doesn't matter.", "color:var(--bone-dim);font-size:calc(13px*var(--tx))"),
+    el("div", { class: "scroll-x", style: "overflow-x:auto" }, el("table", { class: "labl-rank" }, el("tr", {}, ...["#", "SQUAD", "WIN %", "PLAYER-ROUNDS WON", "ROUNDS"].map(h => el("th", {}, h))),
+      ...S.map((s, i) => el("tr", { class: i === 0 ? "top" : "" }, el("td", {}, String(i + 1)), el("td", { class: "nm" }, s.name + badge(s.name)), el("td", { class: "pts" }, bbPct(s.rate)), el("td", {}, s.mw + " of " + s.mr), el("td", {}, String(s.rounds)))))));
+}
+function lablChampCard(c, label) {
+  if (!c) return kp("No Day Champion yet: nobody has won a round.", "color:var(--bone-dim)");
+  return el("div", { class: "labl-champ" }, el("div", { class: "labl-lbl2" }, label || "DAY CHAMPION"), el("b", {}, c.tied.length > 1 ? c.tied.join(" & ") : c.n), el("span", {}, c.pts + " round win" + (c.pts === 1 ? "" : "s") + " · " + c.tags + " tag" + (c.tags === 1 ? "" : "s") + (c.tied.length > 1 ? " · tied" : "")));
+}
+/* the standings page (Scoreboard and the arena's Standings tab): event · season · lifetime */
+kBB = function () {
+  const R = bbRoundsAll(), tabs = [["event", "This event"], ["season", lablSeasonName(ERA)], ["life", "Lifetime"]], body = el("div");
+  const bar = el("div", { class: "row", style: "gap:6px;margin:6px 0" }, ...tabs.map(([k, l]) => { const b = el("button", { class: "btn small" + (k === BB_VIEW ? " on" : "") }, l); b.addEventListener("click", () => { BB_VIEW = k; SFX.click(); route(); }); return b; }));
+  const titles = bbTitlesNow(R), TT = bbTitleMap(titles);
+  if (BB_VIEW === "event") {
+    const E = R.filter(r => r.ev === EVENT_SALT);
+    body.append(lablChampCard(lablDayChampion(E)), el("h2", {}, "Players · round wins today"), E.length ? lablRankTable(lablRank(E, { min: 1 }), { titles: TT, min: 1, squads: E.some(r => r.comp) }) : kp("No rounds yet.", "color:var(--bone-dim)"), lablSquadTable(E, TT) || "");
+  } else if (BB_VIEW === "season") {
+    const S = R.filter(r => r.era === ERA), champs = lablDayChampions(S);
+    body.append(el("h2", {}, "Season standings · 1 point per round won"), S.length ? lablRankTable(lablRank(S), { titles: TT, min: LABL_RANK_MIN, squads: S.some(r => r.comp) }) : kp("No rounds this season yet.", "color:var(--bone-dim)"),
+      lablSquadTable(S, TT) || "",
+      el("h2", {}, "Day Champions"), champs.length ? el("div", { class: "labl-champs" }, ...champs.map(x => el("div", { class: "labl-row" }, el("span", {}, x.ev), el("b", {}, x.champ ? (x.champ.tied.length > 1 ? x.champ.tied.join(" & ") : x.champ.n) + " · " + x.champ.pts : "—")))) : kp("None yet.", "color:var(--bone-dim)"),
+      bbTitlesPlate(R, titles));
+  } else {
+    body.append(el("h2", {}, "Lifetime · every round ever logged"), R.length ? lablRankTable(lablRank(R, { min: 1 }), { min: 1 }) : kp("No rounds yet.", "color:var(--bone-dim)"));
+  }
+  app.append(plate(el("h3", {}, "LABL Arena"), el("h1", {}, "Standings"), kp("Every player is ranked on season points: 1 for each round won, nothing for a loss or a draw. A block win counts the same as a round win. Ties break on win rate, then tags per out.", "color:var(--bone-dim);font-size:calc(14px*var(--tx))"), bar, body));
+};
+bbStandingsTab = function (say) {
+  const box = el("div"); const keep = BB_VIEW; BB_VIEW = "event";
+  const hold = app; const tmp = el("div");
+  // reuse the standings page inside the arena tab
+  const R = bbRoundsAll(), E = R.filter(r => r.ev === EVENT_SALT), titles = bbTitlesNow(R), TT = bbTitleMap(titles);
+  box.append(plate(el("h2", {}, "Standings (this event)"), lablChampCard(lablDayChampion(E)), el("h2", {}, "Players · round wins today"), E.length ? lablRankTable(lablRank(E, { min: 1 }), { titles: TT, min: 1, squads: E.some(r => r.comp) }) : kp("No rounds yet.", "color:var(--bone-dim)"), lablSquadTable(E, TT) || ""));
+  const S = R.filter(r => r.era === ERA);
+  box.append(plate(el("h2", {}, "Season · " + lablSeasonName(ERA)), S.length ? lablRankTable(lablRank(S), { titles: TT, min: LABL_RANK_MIN, squads: S.some(r => r.comp) }) : kp("No rounds this season yet.", "color:var(--bone-dim)"), lablSquadTable(S, TT) || "", bbTitlesPlate(R, titles)));
+  const sh = bbShoutsToday();
+  if (sh.length) box.append(plate(el("h2", {}, "Today's shout-outs"), el("div", { class: "bb-shouts" }, ...sh.slice(0, 24).map(x => kp("• " + x, "font-size:calc(15px*var(--tx))")))));
+  BB_VIEW = keep;
+  return box;
+};
+/* end of day on the run screen: the Day Champion card */
+const EP2_bbRun = bbRun;
+bbRun = function () {
+  const r = EP2_bbRun();
+  const P0 = BBP.get(), run = BBR.get();
+  if (!P0.items[run.idx]) {   // "That's the day"
+    const h1 = [...app.querySelectorAll("h1")].find(h => /That's the day/.test(h.textContent));
+    if (h1) h1.after(lablChampCard(lablDayChampion(bbRoundsAll().filter(x => x.ev === EVENT_SALT))));
+  }
+  return r;
+};
+/* ---- exports: the rounds CSV gains how / competitive / edited; a player-rounds CSV, one row per player per round ---- */
+function lablPlayerRoundsFile(season) {
+  const R = bbRoundsAll().filter(r => (season ? r.era === ERA : r.ev === EVENT_SALT));
+  const q = s => '"' + String(s == null ? "" : s).replace(/"/g, '""') + '"';
+  const head = ["season", "date", "event", "block", "round", "mode", "player", "team", "won", "tags", "outs", "how"];
+  let blk = 0, lastMode = null, rn = 0; const rows = [];
+  R.forEach(r => {
+    if (r.mode !== lastMode) { blk++; rn = 0; lastMode = r.mode; } rn++;
+    const d = new Date(r.t), name = id => (r.nm && r.nm[id]) || id;
+    const teamOf = id => (r.teams || []).find(t => t.m.includes(id)), winners = r.fmt === "ffa" ? (r.win ? [r.win] : []) : typeof r.win === "string" ? [r.win] : r.win >= 0 && r.teams[r.win] ? r.teams[r.win].m : [];
+    const all = r.fmt === "ffa" ? r.p || [] : [].concat(...(r.teams || []).map(t => t.m));
+    all.forEach(id => { const t = teamOf(id), st = (r.st || {})[id] || [0, 0]; rows.push([r.era, d.toLocaleDateString("en-CA"), r.ev, blk, rn, r.mode, name(id), t ? t.n : "FFA", winners.includes(id) ? 1 : 0, st[0] || 0, st[1] || 0, LABL_HOW_LABEL[r.how] || ""].map(q).join(",")); });
+  });
+  return { name: ((season ? "labl-players-season-" + ERA : "labl-players-" + EVENT_SALT).replace(/[^a-z0-9-]+/gi, "_")) + ".csv", text: [head.join(","), ...rows].join("\r\n"), type: "text/csv" };
+}
+
 /* ---- Scoreboard (player-facing, mode "8") ---- */
 function lablBoard() {
   app.append(lablBar("Scoreboard", "board"));
-  app.append(lablPointsPlate());
   kBB();
   const iv = setInterval(() => { if (!document.querySelector(".modal")) route(); }, 60000);
   cleanup = () => clearInterval(iv);

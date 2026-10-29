@@ -187,3 +187,12 @@ PATCHES += [
 PATCHES_SCOPED += [
   ('tune', 'GC.GREEN', '"#ffd36a"'),   # a locked-on signal glows gold, not CRT green
 ]
+
+# --- Phase 5: squad standings count competitive rounds only (r.comp is set at save time from the block's chip)
+PATCHES += [
+  ('const bbSpRound = r => !!r && r.fmt !== "ffa"', 'const bbSpRound = r => !!r && r.comp === true && r.fmt !== "ffa"'),
+]
+PATCHES += [
+  ('"The game is stopped. Everyone picks up darts. Most darts = 1 temporary Survivor Point (a Director gives it at Scav Base: Director › Today › Give temporary SP).",',
+   '"The game is stopped. Everyone picks up darts. Most darts collected gets a shout-out at the close.",'),
+]

@@ -11,6 +11,8 @@ python3 build.py                        # -> LABL_Arena.html + docs/index.html +
 node walk.js && node flow.js            # smoke + game-day flow tests (need Playwright)
 node pwa.js                             # installed-app test: offline reload + update keeps data
 node draw.js                            # team draw: 30 players x 20 draws balanced, walk-in, squads hidden
+node mg.js after                        # mini-games: palette, lockouts, tagged, timing (before|after writes shots/mg-*/)
+node seasons.js                         # season ranking, Day Champion, both CSVs against hand-computed values
 ```
 
 ## Rules for changing anything
@@ -38,7 +40,7 @@ node draw.js                            # team draw: 30 players x 20 draws balan
 
 ## Storage keys (localStorage)
 
-`ep_cfg` (config, PIN, roster under `.roster` with `age` Y/T/A per player, LABL settings under `.labl`), `ep_bb` (rounds — each with `how` time/elim/obj/mg/forfeit/other, `st` {playerId: [tags, outs]} and an `ed` edit history when edited —
+`ep_cfg` (config, PIN, roster under `.roster` with `age` Y/T/A per player, LABL settings under `.labl`), `ep_bb` (rounds — each with `era` = season from its date ("2026 H2"), `comp`, `how` time/elim/obj/mg/forfeit/other, `st` {playerId: [tags, outs]} and an `ed` edit history when edited —
 awards), `ep_bbplan` (`zombies`; mode items carry `comp` and `mg`), `ep_bbpack` (packing-list ticks for the event), `ep_bbteams` (sides, plus `pool` / `bl` blaster S/F/B / `day` / `drawIdx` for the LABL draw), `ep_bbplan`, `ep_bbrun`, `ep_bbterm*`, `ep_mtab`, `ep_tablog`, `ep_lk`,
 `ep_lock_<game>`. Keys keep their `ep_` prefix on purpose: renaming them would orphan saved data.
 
