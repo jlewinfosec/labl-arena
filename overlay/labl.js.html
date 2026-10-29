@@ -494,14 +494,16 @@ function lablChip(cur, LAB, NEXT, onSet, cls) {
 }
 
 /* ---- the draw screen (Arena › Teams tab, and on its own when a mode block begins) ---- */
+let LABL_DRAW_AUTO = false;   // the draw was opened by the run screen for a new block (survives redraws)
 function lablDrawScreen(auto) {
+  if (auto) LABL_DRAW_AUTO = true; auto = auto || LABL_DRAW_AUTO;
   const T = bbTeams(), P = bbPlayers().sort((x, y) => x.n.localeCompare(y.n)), byId = Object.fromEntries(P.map(x => [x.id, x]));
   const run = BBR.get(), it = lablCurItem(), idx = lablCurIdx(), comp = lablCompetitive(it);
   const pool = new Set(T.pool.filter(id => byId[id]));
   const save = () => { T.pool = [...pool]; bbSaveTeams(T); };
   const out = el("div", { class: "colorsafe labl-draw" });
   out.append(arenaBar("teams", true));
-  const back = () => go({ g: "bbrun" }), rr = () => go({ g: "bbrun", s: "teams" });   // re-render the draw itself (route() would fall back to the run screen once a draw exists)
+  const back = () => { LABL_DRAW_AUTO = false; go({ g: "bbrun" }); }, rr = () => go({ g: "bbrun", s: "teams" });   // re-render the draw itself (route() would fall back to the run screen once a draw exists)
   const drawn = T.a.m.length + T.b.m.length > 0;
   // who's here
   const list = el("div", { class: "labl-pool" }, ...P.map(x => {
@@ -523,8 +525,9 @@ function lablDrawScreen(auto) {
       el("div", { class: "labl-team-bal" }, lablBalanceLine(L, T.bl)));
   };
   const drawB = el("button", { class: "btn go", style: "min-height:60px;flex:1", onclick: () => { if (pool.size < 2) { SFX.bad(); return; } const [A, B] = lablDraw([...pool].map(i => byId[i]), T.bl); T.a.m = A; T.b.m = B; T.drawIdx = idx; T.fmt = T.fmt === "sq" && !comp ? "rb" : T.fmt; bbSaveTeams(T); SFX.good(); rr(); } }, drawn ? "🎲 Redraw" : "🎲 Draw teams");
-  const keepB = el("button", { class: "btn", style: "min-height:60px;flex:1", onclick: () => { T.drawIdx = idx; bbSaveTeams(T); SFX.good(); back(); } }, drawn ? "Keep last teams ▶" : "Back to the run screen");
-  const useB = el("button", { class: "btn go", style: "min-height:60px;width:100%;margin-top:10px", onclick: () => { T.drawIdx = idx; bbSaveTeams(T); SFX.good(); back(); } }, "Use these teams ▶");
+  const done = () => { T.drawIdx = idx; bbSaveTeams(T); SFX.good(); const a = auto; LABL_DRAW_AUTO = false; if (a) go({ g: "bbrun", s: "nextup" }); else back(); };
+  const keepB = el("button", { class: "btn", style: "min-height:60px;flex:1", onclick: done }, drawn ? "Keep last teams ▶" : "Back to the run screen");
+  const useB = el("button", { class: "btn go", style: "min-height:60px;width:100%;margin-top:10px", onclick: done }, "Use these teams ▶");
   out.append(plate(el("h3", {}, it ? (auto ? "NEW MODE · " : "") + it.mode.toUpperCase() : "TEAMS"), el("h1", {}, drawn ? "Teams for this mode" : "Who's playing today?"),
     kp(drawn ? "Tap a name to move it to the other side. Redraw for a fresh balanced split." : "Tap everyone who's here, set their blaster (optional), then Draw teams. The pool carries over to the next mode, so this is the only check-in.", "color:var(--bone-dim)"),
     drawn ? el("div", { class: "labl-teams2" }, teamBox("a"), teamBox("b")) : "",
@@ -1243,13 +1246,96 @@ function lablPlayerRoundsFile(season) {
   return { name: ((season ? "labl-players-season-" + ERA : "labl-players-" + EVENT_SALT).replace(/[^a-z0-9-]+/gi, "_")) + ".csv", text: [head.join(","), ...rows].join("\r\n"), type: "text/csv" };
 }
 
-/* ---- Scoreboard (player-facing, mode "8") ---- */
+/* ============ NEXT UP + SCOREBOARD (Phase 6) ============ */
+/* ---- Next Up: what players see between rounds, readable from the field ---- */
+let LABL_NEXTUP = false;   // set when a round is logged: the next run-screen render opens Next Up instead
+function lablNextUpData() {
+  const P0 = BBP.get(), run = BBR.get(), idx = lablCurIdx(), it = idx >= 0 ? P0.items[idx] : null, T = bbTeams(), Pl = bbPlayers();
+  if (!it) return null;
+  const I = bbInfo(it.mode), ft2 = bbFt2Mode(it.mode), n = ft2 ? 3 : +it.n || 1, cur = idx === run.idx, rnd = cur ? Math.min(run.rnd || 1, n) : 1;
+  const S = I.fmt === "ffa" ? null : bbSides(T, Pl), bw = run.bw && run.bw.id === it.id ? run.bw.w : [0, 0];
+  const times = bbPlanTimes(P0, run.ev === EVENT_SALT && (run.idx > 0 || run.itemAt) ? run : null), row = times.rows[idx];
+  const brk = !cur && run.idx < idx ? P0.items.slice(run.idx, idx).filter(x => x.k === "brk") : [];
+  const started = cur && run.clk && run.clk.t0 && !run.clk.end;
+  return { it, I, n, rnd, cur, S, bw, ft2, len: bbModeLen(it.mode, P0, it), resp: bbModeResp(it.mode, P0, false), at: row && row.s ? row.s : 0, brk, started, Pl, T };
+}
+function lablNextUp() {
+  const D = lablNextUpData();
+  const out = el("div", { class: "labl-nextup" });
+  out.addEventListener("click", () => go({ g: "bbrun" }));
+  if (!D) { out.append(el("div", { class: "nu-mode" }, "THAT'S THE DAY"), el("div", { class: "nu-tap" }, "Tap anywhere to go back to the run screen")); app.append(out); return; }
+  const byId = Object.fromEntries(D.Pl.map(x => [x.id, x])), rules = (D.I.rules || "").split(/(?<=[.!?])\s/)[0];
+  const series = D.ft2 && D.S ? D.S[0].n + " " + D.bw[0] + " · " + D.S[1].n + " " + D.bw[1] + " · first to 2 wins the mode" : D.n > 1 ? "best of " + D.n : "one winner";
+  const when = D.started ? "IN PLAY" : D.at ? "Starts " + bbHM(D.at) : "Starting soon";
+  out.append(el("div", { class: "nu-strip" }, el("span", {}, D.cur ? (D.started ? "NOW PLAYING" : "NEXT UP") : "NEXT UP" + (D.brk.length ? " · after " + D.brk.map(b => (BB_BRK[b.kind] || BB_BRK.custom)[1].toLowerCase() + " (" + (+b.min || (BB_BRK[b.kind] || BB_BRK.custom)[2]) + " min)").join(", ") : "")), el("span", {}, when)),
+    el("div", { class: "nu-mode" }, D.it.mode),
+    el("div", { class: "nu-round" }, (D.n > 1 ? "Round " + D.rnd + " of " + D.n + " · " : "") + series));
+  if (D.S) {
+    const side = t => { const L = t.m.map(i => byId[i]).filter(Boolean); return el("div", { class: "nu-team " + t.col, style: "--tc:" + BB_COL[t.col] }, el("div", { class: "nu-team-h" }, el("b", {}, t.n), el("span", {}, String(L.length))), el("div", { class: "nu-names" }, ...L.map(x => el("span", {}, x.n))), el("div", { class: "nu-bal" }, lablBalanceLine(L, D.T.bl))); };
+    out.append(el("div", { class: "nu-teams" }, side(D.S[0]), side(D.S[1])));
+  } else out.append(el("div", { class: "nu-ffa" }, el("b", {}, "FREE-FOR-ALL · " + D.Pl.filter(x => (D.T.pool || []).includes(x.id)).length + " players"), el("div", { class: "nu-names" }, ...D.Pl.filter(x => (D.T.pool || []).includes(x.id)).map(x => el("span", {}, x.n)))));
+  out.append(el("div", { class: "nu-rules" }, rules), el("div", { class: "nu-facts" }, bbSecs(D.len) + " rounds" + (D.resp ? " · " + D.resp + " s respawn" : " · no respawn")), el("div", { class: "nu-tap" }, "Tap anywhere to go back to the run screen"));
+  app.append(out);
+  lablNextUpFit(out);
+  window.addEventListener("resize", () => lablNextUpFit(out), { once: true });
+}
+/* size the name lists so every name fits the panel: columns by head count, font by the rows that must fit */
+function lablNextUpFit(out) {
+  out.querySelectorAll(".nu-names").forEach(box => {
+    const n = box.children.length, cols = n <= 8 ? 2 : n <= 15 ? 3 : 4, rows = Math.ceil(n / cols) || 1;
+    box.style.setProperty("--cols", String(cols));
+    const h = box.clientHeight || 200, w = box.clientWidth / cols, longest = Math.max(4, ...[...box.children].map(c => c.textContent.length));
+    const fs = Math.max(12, Math.min(44, Math.floor(h / rows / 1.2), Math.floor((w * 1.6) / longest)));
+    box.style.setProperty("--fs", fs + "px");
+  });
+}
+const EP3_arenaPage = arenaPage;
+arenaPage = function () { if (NAV.get("s") !== "teams") LABL_DRAW_AUTO = false; if (NAV.get("g") !== "bbterm" && NAV.get("s") === "nextup") { if (!arenaUnlocked()) { BBR_OK = 0; return arenaGate(); } DIR_OK = false; return lablNextUp(); } return EP3_arenaPage(); };
+/* a logged round → Next Up opens on its own (the UNDO toast stays on top of it) */
+const EP3_bbSaveRound = bbSaveRound;
+bbSaveRound = function (r) { const out = EP3_bbSaveRound(r); if (typeof arenaOn === "function" && arenaOn()) LABL_NEXTUP = true; return out; };
+const EP3_bbRun = bbRun;
+bbRun = function () {
+  if (LABL_NEXTUP) { LABL_NEXTUP = false; if (lablCurItem() && (BBR_OK && Date.now() - DIR_LAST < bbCfg().idleMin * 60000)) { setTimeout(() => go({ g: "bbrun", s: "nextup" }), 0); return; } }
+  const r = EP3_bbRun();
+  const tools = app.querySelector(".labl-runtools");
+  if (tools) tools.append(el("button", { class: "btn", style: "min-height:52px", onclick: () => go({ g: "bbrun", s: "nextup" }) }, "👥 Show players"));
+  return r;
+};
+/* ---- the Scoreboard: slides that rotate on their own; tap pauses, swipe moves ---- */
+let LABL_SLIDE = 0, LABL_SLIDE_PAUSED = false;
+function lablSlides() {
+  const R = bbRoundsAll(), S = R.filter(r => r.era === ERA), E = R.filter(r => r.ev === EVENT_SALT), titles = bbTitlesNow(R), TT = bbTitleMap(titles);
+  const slides = [];
+  const top = lablRank(S).slice(0, 10);
+  slides.push({ k: "season", title: lablSeasonName(ERA).toUpperCase() + " · TOP 10", body: top.length ? el("div", { class: "sb-list" }, ...top.map(x => el("div", { class: "sb-row" + (x.rank === 1 ? " top" : ""), }, el("span", { class: "sb-n" }, x.q ? String(x.rank) : "–"), el("span", { class: "sb-name" }, x.n), el("span", { class: "sb-pts" }, String(x.pts)), el("span", { class: "sb-sub" }, x.rounds + " rounds · " + bbPct(x.rate))))) : el("div", { class: "sb-empty" }, "No rounds this season yet") });
+  const today = E.slice().reverse().slice(0, 12).map(r => { const w = r.fmt === "ffa" ? (r.nm || {})[r.win] || "?" : typeof r.win === "string" ? (r.nm || {})[r.win] || "?" : r.win >= 0 ? r.teams[r.win].n : "DRAW"; return el("div", { class: "sb-row" }, el("span", { class: "sb-n" }, bbHM(r.t)), el("span", { class: "sb-name" }, r.mode), el("span", { class: "sb-pts " + (w === "RED" || w === "BLUE" ? w.toLowerCase() : "") }, w), el("span", { class: "sb-sub" }, LABL_HOW_LABEL[r.how] || "")); });
+  slides.push({ k: "today", title: "TODAY'S RESULTS", body: today.length ? el("div", { class: "sb-list" }, ...today) : el("div", { class: "sb-empty" }, "No rounds yet today") });
+  const race = lablRank(E, { min: 1 }).filter(x => x.pts > 0).slice(0, 8), champ = lablDayChampion(E);
+  slides.push({ k: "race", title: "DAY CHAMPION RACE", body: race.length ? el("div", {}, el("div", { class: "sb-lead" }, "LEADING: " + (champ.tied.length > 1 ? champ.tied.join(" & ") : champ.n) + " · " + champ.pts + " round win" + (champ.pts === 1 ? "" : "s")), el("div", { class: "sb-list" }, ...race.map((x, i) => el("div", { class: "sb-row" + (i === 0 ? " top" : "") }, el("span", { class: "sb-n" }, String(i + 1)), el("span", { class: "sb-name" }, x.n), el("span", { class: "sb-pts" }, String(x.pts)), el("span", { class: "sb-sub" }, x.tags + " tags"))))) : el("div", { class: "sb-empty" }, "Nobody has won a round yet today") });
+  slides.push({ k: "titles", title: "TITLES · " + lablSeasonName(ERA).toUpperCase(), body: titles.length ? el("div", { class: "sb-list" }, ...titles.slice(0, 10).map(t => el("div", { class: "sb-row" }, el("span", { class: "sb-n" }, "🏅"), el("span", { class: "sb-name" }, t.label), el("span", { class: "sb-sub wide" }, t.n || "")))) : el("div", { class: "sb-empty" }, "Titles appear as rounds are played") });
+  slides.push({ k: "logo", title: "", body: el("div", { class: "sb-logo" }, epLogo({}), el("div", { class: "sb-logo-t" }, "LOUISIANA BLASTER LEAGUE"), el("div", { class: "sb-logo-s" }, EVENT_SALT + " · " + lablSeasonName(ERA))) });
+  return slides;
+}
 function lablBoard() {
-  app.append(lablBar("Scoreboard", "board"));
-  kBB();
-  const iv = setInterval(() => { if (!document.querySelector(".modal")) route(); }, 60000);
+  const slides = lablSlides();
+  if (LABL_SLIDE >= slides.length) LABL_SLIDE = 0;
+  const sl = slides[LABL_SLIDE];
+  const out = el("div", { class: "labl-board" });
+  out.append(el("div", { class: "sb-head" }, el("span", {}, "LABL SCOREBOARD"), el("span", {}, LABL_SLIDE_PAUSED ? "⏸ PAUSED · tap to resume" : (LABL_SLIDE + 1) + " / " + slides.length)),
+    sl.title ? el("div", { class: "sb-title" }, sl.title) : "", el("div", { class: "sb-body" }, sl.body),
+    el("div", { class: "sb-dots" }, ...slides.map((x, i) => el("i", { class: i === LABL_SLIDE ? "on" : "" }))),
+    el("div", { class: "sb-foot" }, switchBtn("board", "font-size:calc(13px*var(--tx));min-height:34px")));
+  let x0 = null;
+  out.addEventListener("pointerdown", e => { x0 = e.clientX; });
+  out.addEventListener("pointerup", e => { if (e.target.closest("button")) return; const dx = x0 == null ? 0 : e.clientX - x0; x0 = null; if (Math.abs(dx) > 60) { LABL_SLIDE = (LABL_SLIDE + (dx < 0 ? 1 : slides.length - 1)) % slides.length; route(); } else { LABL_SLIDE_PAUSED = !LABL_SLIDE_PAUSED; route(); } });
+  app.append(out);
+  const iv = setInterval(() => { if (document.querySelector(".modal") || LABL_SLIDE_PAUSED) return; LABL_SLIDE = (LABL_SLIDE + 1) % slides.length; route(); }, 12000);
   cleanup = () => clearInterval(iv);
 }
+
+/* ---- Scoreboard (player-facing, mode "8") ---- */
+/* lablBoard is defined in the Phase 6 block above: rotating slides. */
 
 /* ---- Mission Tablet: tiles without classes, with the on/off list and the Hard setting ---- */
 mtabStations = function () { const off = lablCfg().gamesOff, st = mtabCfg().st; return orderedIds().filter(id => !off.includes(id) && (!st.length || st.includes(id))); };

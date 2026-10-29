@@ -13,6 +13,7 @@ node pwa.js                             # installed-app test: offline reload + u
 node draw.js                            # team draw: 30 players x 20 draws balanced, walk-in, squads hidden
 node mg.js after                        # mini-games: palette, lockouts, tagged, timing (before|after writes shots/mg-*/)
 node seasons.js                         # season ranking, Day Champion, both CSVs against hand-computed values
+node p6.js                              # Next Up (30 players, both sizes, no clipping) and the scoreboard slides
 ```
 
 ## Rules for changing anything

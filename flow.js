@@ -44,7 +44,10 @@ for (let rnd=1; rnd<=2; rnd++) {
   await p.waitForTimeout(4500); await say('round '+rnd+' running');
   await ff(301); await say('round '+rnd+' horn'); console.log((await buttons()).slice(9,22).join(' / '));
   if (rnd===1) { await p.click('.labl-how .labl-chip:has-text("Objective")'); await p.waitForTimeout(200); }   // how it ended
-  await btn('RED WON'); await p.waitForTimeout(300); await say('logged round '+rnd);
+  await btn('RED WON'); await p.waitForTimeout(300); await say('logged round '+rnd+' (Next Up opens on its own)');
+  const nu=await p.evaluate(()=>!!document.querySelector('.labl-nextup')); console.log(nu?'PASS Next Up screen opened after the log':'FAIL no Next Up after the log');
+  if (rnd===1) { await p.screenshot({path:'shots/p6_nextup_12_1280x800.png'}); await p.setViewportSize({width:800,height:1280}); await p.waitForTimeout(300); await p.screenshot({path:'shots/p6_nextup_12_800x1280.png'}); await p.setViewportSize({width:1280,height:800}); }
+  await p.click('.labl-nextup'); await p.waitForTimeout(400);   // one tap back to the controls
   const t0=Date.now(); const ready=await p.evaluate(()=>[...document.querySelectorAll('button')].some(b=>/Start round 2/.test(b.textContent)&&!b.disabled)); if(rnd===1) console.log(ready?'PASS Start round 2 ready at once (no reset gate)':'FAIL Start round 2 not ready');
   await p.waitForTimeout(10500);   // UNDO toast lasts 10 s; wait it out so the next tap is a clean one
   await say('after undo window '+rnd);
@@ -54,14 +57,16 @@ await p.screenshot({path:'shots/flow_block_done.png',fullPage:true});
 // the next mode block opens the draw screen on its own
 await btn('Next'); await p.waitForTimeout(500); await say('block 2 (draw screen should open)');
 if (!(await p.evaluate(()=>!!document.querySelector('.labl-draw')))) console.log('FAIL: draw screen did not open for the new block');
-await btn('Redraw'); await p.waitForTimeout(300); await btn('Use these teams'); await p.waitForTimeout(400); await say('block 2 run (FFA stat mode)');
+await btn('Redraw'); await p.waitForTimeout(300); await btn('Use these teams'); await p.waitForTimeout(400); await say('block 2: Next Up after the draw');
+console.log((await p.evaluate(()=>!!document.querySelector('.labl-nextup')))?'PASS Next Up opened after the new block\'s draw':'FAIL no Next Up after the draw');
+await p.click('.labl-nextup'); await p.waitForTimeout(400); await say('block 2 run (FFA stat mode)');
 // FFA block decided by the stats grid: rules card → start → horn → tags → confirm the leader
 await rules(); await p.waitForTimeout(4500); await ff(301); await say('FFA horn');
 await p.screenshot({path:'shots/p2_stats_grid.png',fullPage:true});
 await p.evaluate(()=>{const rows=[...document.querySelectorAll('.labl-stat-row')]; const plus=r=>r.querySelectorAll('.labl-stat-c')[0].querySelectorAll('button')[1]; const outs=r=>r.querySelectorAll('.labl-stat-c')[1].querySelectorAll('button')[1]; plus(rows[3]).click(); plus(rows[3]).click(); plus(rows[3]).click(); plus(rows[5]).click(); outs(rows[5]).click(); outs(rows[0]).click();});
 await p.waitForTimeout(300); const leader=await p.evaluate(()=>document.querySelector('.labl-confirm button')?.textContent||''); console.log('leader:',leader);
 const expect=await p.evaluate(()=>document.querySelectorAll('.labl-stat-row')[3].querySelector('.nm').textContent);
-await p.click('.labl-confirm button'); await p.waitForTimeout(500);
+await p.click('.labl-confirm button'); await p.waitForTimeout(500); if (await p.evaluate(()=>!!document.querySelector('.labl-nextup'))) { await p.click('.labl-nextup'); await p.waitForTimeout(300); }
 const ffa=await p.evaluate(()=>{const r=bbRoundsAll().slice(-1)[0]; return {mode:r.mode,win:r.nm[r.win],how:r.how,st:r.st};}); console.log('FFA round:',JSON.stringify(ffa));
 console.log(ffa.win.toUpperCase()===expect.toUpperCase()&&ffa.st&&Object.keys(ffa.st).length===3?'PASS FFA winner came from the stats grid':'FAIL FFA winner not from the grid');
 await p.waitForTimeout(10500);
