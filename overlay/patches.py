@@ -196,3 +196,8 @@ PATCHES += [
   ('"The game is stopped. Everyone picks up darts. Most darts = 1 temporary Survivor Point (a Director gives it at Scav Base: Director › Today › Give temporary SP).",',
    '"The game is stopped. Everyone picks up darts. Most darts collected gets a shout-out at the close.",'),
 ]
+# --- Phase 7: a mini-game played from the arena's station counts as Mission Tablet play (no squad, no PIN, no bank)
+PATCHES += [
+  ('const MTAB = () => EP_BUILD !== "player" && typeof modeVal === "function" && modeVal() === "7";',
+   'const MTAB = () => EP_BUILD !== "player" && typeof modeVal === "function" && (modeVal() === "7" || (typeof lablSt === "function" && !!lablSt() && lablSt().kind === "mg" && lablSt().team != null));'),
+]

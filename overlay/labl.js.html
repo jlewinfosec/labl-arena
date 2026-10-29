@@ -29,7 +29,8 @@ function lablCfg() {
     gear: c.gear || {},                // per-mode prop overrides (Phase 3)
     everyday: c.everyday || null,      // every-day packing list override
     mg: c.mg === "story" ? "story" : "arena",  // Mission Tablet timing profile outside the arena (Phase 4)
-    seasonNames: c.seasonNames && typeof c.seasonNames === "object" ? c.seasonNames : {}   // "2026 H2" → display name (Phase 5)
+    seasonNames: c.seasonNames && typeof c.seasonNames === "object" ? c.seasonNames : {},  // "2026 H2" → display name (Phase 5)
+    stories: Array.isArray(c.stories) ? c.stories : null   // the story library (Phase 7)
   };
 }
 function lablCfgSet(patch) {
@@ -671,7 +672,7 @@ bbRunMode = function (it, run, P, T, Pl, unlocked, redraw, say, RT) {
   // a small Rules button next to the mode name (EP's fold stays too)
   const h1 = box.querySelector("h1");
   if (h1) h1.after(el("button", { class: "btn small labl-rules-btn", onclick: () => document.body.append(lablRulesCard(it, null)) }, "📖 Rules"));
-  if (fresh && run.rr !== it.id && !document.getElementById("labl-rules")) {
+  if (fresh && run.rr !== it.id && !document.getElementById("labl-rules") && !(it.story && run.sc !== it.id)) {
     setTimeout(() => { if (!document.getElementById("labl-rules")) document.body.append(lablRulesCard(it, () => { run.rr = it.id; BBR.save(run); const b = startBtn(); if (b) b.click(); else route(); })); }, 0);
   }
   return box;
@@ -1334,6 +1335,314 @@ function lablBoard() {
   cleanup = () => clearInterval(iv);
 }
 
+/* ============ OBJECTIVE STATIONS ON THE ONE TABLET + STORY MISSIONS (Phase 7) ============
+   Three LABL stations run on this tablet with the round's clock: "mg" (a mini-game is the objective), "hp2" (Hardpoint
+   with the hill shown as a huge letter), "terr2" (Territories scored at the horn). Each hands its result back to the run
+   screen through EP's ep_bbpending, so the one-tap log is prefilled. EP's Pylon reboot station (pyl) already runs on the
+   tablet alone and is kept. Stories are a saved library; a story day builds its chapters as the mode blocks. */
+const LABL_ST_KEY = "ep_bbstation";
+const lablSt = () => jget(LABL_ST_KEY, null);
+const lablStSave = x => (x ? jset(LABL_ST_KEY, x) : (() => { try { localStorage.removeItem(LABL_ST_KEY); } catch (e) {} })());
+function lablStSides() { const T = bbTeams(), P = bbPlayers(), S = bbSides(T, P); return S || [{ n: "RED", col: "red", m: [] }, { n: "BLUE", col: "blue", m: [] }]; }
+function lablStHand(win, obj, how, extra) {
+  const it = lablCurItem();
+  jset("ep_bbpending", Object.assign({ mode: it ? it.mode : "Other", win, obj: obj || [0, 0], t: Date.now(), how: how || "obj" }, extra || {}));
+  lablStSave(null);
+  go({ g: "bbrun" });
+}
+const lablStClock = st => { const e = st.t0 ? (Date.now() - st.t0 - (st.pz || 0)) / 1000 : 0; return Math.max(0, st.len - e); };
+function lablStBar(title, st) {
+  const clock = el("div", { class: "st-clock", "data-stclock": "1" }, st.t0 ? bbSecs(Math.ceil(lablStClock(st))) : bbSecs(st.len));
+  return el("div", { class: "st-bar" }, el("div", {}, el("div", { class: "labl-kicker" }, "LABL ARENA · OBJECTIVE STATION"), el("div", { class: "st-title" }, title)), clock);
+}
+function lablStBack(label) {
+  return el("button", { class: "btn small", style: "font-size:calc(13px*var(--tx));min-height:34px", onclick: () => { if (arenaUnlocked()) { lablStSave(null); go({ g: "bbrun" }); return; } const ov = el("div", { class: "modal" }), box = el("div", { class: "modal-box plate" }); box.append(el("h3", {}, "Board Member"), el("h1", {}, "Leave the station"), lablPinBox(() => { BBR_OK = 1; DIR_LAST = Date.now(); ov.remove(); lablStSave(null); go({ g: "bbrun" }); }, "Back to the run screen"), el("button", { class: "btn", style: "width:100%;margin-top:8px", onclick: () => ov.remove() }, "Cancel")); ov.append(box); document.body.append(ov); } }, label || "⚙ Board Member · run screen");
+}
+/* 3… 2… 1… then the clock; a ticker keeps the big clock and the horn */
+function lablStStart(st, onHorn, RT) {
+  const tick = () => {
+    const left = lablStClock(st), c = document.querySelector("[data-stclock]");
+    if (c) c.textContent = bbSecs(Math.ceil(left));
+    if (left <= 60 && left > 59 && !st.min) { st.min = 1; lablStSave(st); BBSND.min(); }
+    if (left <= 10 && left > 0 && Math.ceil(left) !== st.lastTick) { st.lastTick = Math.ceil(left); BBSND.tick(); }
+    if (left <= 0 && !st.horn) { st.horn = 1; lablStSave(st); BBSND.end(); onHorn(); }
+  };
+  RT.push(setInterval(tick, 250));
+}
+function lablStCountdown(st, then) { BBSND.cd(); setTimeout(BBSND.cd, 1000); setTimeout(BBSND.cd, 2000); setTimeout(() => { BBSND.go(); st.t0 = Date.now(); lablStSave(st); then(); }, 3000); }
+/* ---- the mini-game station ---- */
+function lablStMg() {
+  const st = lablSt() || {}, it = lablCurItem(), S = lablStSides(), P0 = BBP.get();
+  const RT = []; cleanup = () => RT.forEach(clearInterval);
+  if (!st.kind) {
+    // setup: which game, which setting, both-teams-may-finish; the timing profile comes from the block
+    const ids = (lablMgProfile() === "arena" ? LABL_ARENA_GAMES : orderedIds().filter(id => !LABL_MULTI_GAMES.includes(id))).filter(id => GAMES[id]);
+    const story = it && it.story ? lablStoryChapter(it.story) : null;
+    let game = (story && story.game && GAMES[story.game] ? story.game : ids[0]), d = 1, both = !!(it && it.both);
+    const box = el("div", { class: "colorsafe st-setup" });
+    const render = () => {
+      box.innerHTML = "";
+      box.append(lablStBar("Mini-game station · setup", { len: bbModeLen(it ? it.mode : "Other", P0, it) }),
+        plate(el("h3", {}, "Board Member"), el("h1", {}, "Pick the game"),
+          el("div", { class: "labl-tiles st-pick" }, ...ids.map(id => el("button", { class: "btn labl-tile" + (id === game ? " on" : ""), onclick: () => { game = id; render(); } }, el("span", { class: "ico" }, GAMES[id].icon), el("b", {}, GAMES[id].title)))),
+          el("div", { class: "row", style: "gap:8px;margin-top:10px;flex-wrap:wrap" },
+            el("button", { class: "btn small labl-chip" + (d === 1 ? " on" : ""), onclick: () => { d = 1; render(); } }, "Standard"), el("button", { class: "btn small labl-chip" + (d === 2 ? " on" : ""), onclick: () => { d = 2; render(); } }, "Hard"),
+            el("button", { class: "btn small labl-chip" + (both ? " on" : ""), onclick: () => { both = !both; render(); } }, both ? "Both teams may finish: faster time wins" : "First finish ends the round")),
+          kp("Timing: " + lablMgProfile() + " profile (" + (lablMgProfile() === "arena" ? "short games" : "full-length games") + "). A fail locks only that team's button for " + (d === 2 ? 60 : 30) + " s; the other team can still play.", "color:var(--bone-dim);font-size:calc(13px*var(--tx))"),
+          el("button", { class: "btn go", style: "width:100%;min-height:64px;font-size:calc(24px*var(--tx));margin-top:10px", onclick: () => { lablStSave({ kind: "mg", game, d, both, len: bbModeLen(it ? it.mode : "Other", P0, it), t0: 0, locks: {}, done: {}, sides: S.map(x => x.n) }); route(); } }, "Station ready · start the round (3… 2… 1…)")),
+        el("div", { class: "row" }, lablStBack()));
+    };
+    render(); app.append(box); return;
+  }
+  const G = GAMES[st.game], out = el("div", { class: "colorsafe st-screen" });
+  const finish = () => {
+    const times = [0, 1].map(i => st.done[i]).filter(t => t != null);
+    if (!times.length) return lablStHand(-1, [0, 0], "time");
+    const w = st.done[0] != null && (st.done[1] == null || st.done[0] <= st.done[1]) ? 0 : 1;
+    lablStHand(w, [st.done[0] != null ? 1 : 0, st.done[1] != null ? 1 : 0], "mg", { mgs: st.done[w], mgGame: st.game });
+  };
+  out.append(lablStBar(G.title + " · " + (st.d === 2 ? "Hard" : "Standard"), st));
+  if (!st.t0) {
+    const go2 = el("button", { class: "btn go", style: "width:100%;min-height:80px;font-size:calc(28px*var(--tx))" }, "▶ Start the round");
+    go2.addEventListener("click", () => { go2.disabled = true; go2.textContent = "3… 2… 1…"; lablStCountdown(st, route); });
+    out.append(plate(el("h1", {}, "The tablet is the objective"), kp("Reach the station, tap your side, and beat " + G.title + ". " + (st.both ? "Both sides may finish; the faster time wins at the horn." : "The first side to finish wins the round.") + " A fail locks your side's button for " + (st.d === 2 ? 60 : 30) + " s. Tagged while playing? Tap I got tagged and step away.", "font-size:calc(18px*var(--tx))"), go2), el("div", { class: "row" }, lablStBack()));
+    app.append(out); return;
+  }
+  const sides = el("div", { class: "st-sides" });
+  const btn = i => {
+    const col = BB_COL[S[i].col], lockUntil = st.locks[i] || 0, done = st.done[i], left = Math.max(0, Math.ceil((lockUntil - Date.now()) / 1000));
+    const b = el("button", { class: "btn st-side", style: "--tc:" + col }, el("b", {}, S[i].n + " PLAYS"), el("span", { "data-stlock": String(i) }, done != null ? "FINISHED · " + fmt(done) : left ? "LOCKED · " + left + " s" : G.title));
+    if (done != null || left || st.horn) b.disabled = true;
+    b.addEventListener("click", () => { st.team = i; lablStSave(st); SFX.click(); go({ g: st.game, d: String(st.d) }); });
+    return b;
+  };
+  sides.append(btn(0), btn(1));
+  out.append(plate(el("h1", {}, G.icon + " " + G.title), kp(st.both ? "Both sides may finish: the faster time wins at the horn." : "First side to finish wins the round.", "color:var(--bone-dim)"), sides),
+    el("div", { class: "row", style: "gap:8px" }, lablStBack(), el("button", { class: "btn small", onclick: () => finish() }, "End the round now")));
+  app.append(out);
+  lablStStart(st, finish, RT);
+  RT.push(setInterval(() => { document.querySelectorAll("[data-stlock]").forEach(sp => { const i = +sp.dataset.stlock, left = Math.max(0, Math.ceil(((st.locks[i] || 0) - Date.now()) / 1000)); if (st.done[i] == null && !left && sp.textContent.startsWith("LOCKED")) route(); else if (left) sp.textContent = "LOCKED · " + left + " s"; }); }, 1000));
+  if (st.horn) finish();
+}
+/* the mini-game shell, when a station is live: a win credits the side, a fail locks that side only, tagged goes back */
+const EP4_result = result;
+result = function (id, d, won, note, o = {}) {
+  const st = lablSt();
+  if (!st || st.kind !== "mg" || st.team == null) return EP4_result(id, d, won, note, o);
+  const team = st.team; delete st.team;
+  if (won) {
+    st.done[team] = Math.round(o.elapsed || 0); lablStSave(st);
+    if (!st.both) { lablStHand(team, team === 0 ? [1, 0] : [0, 1], "mg", { mgs: st.done[team], mgGame: st.game }); return; }
+    go({ g: "bbterm", m: "mg", from: "run" }); return;
+  }
+  // a fail locks this side only: clear the tablet-wide lock the shell just wrote
+  st.locks[team] = Date.now() + (st.d === 2 ? 60 : 30) * 1000; lablStSave(st);
+  try { const L = lkGet(); if (L[id]) { L[id].all = {}; lkSet(L); } } catch (e) {}
+  app.innerHTML = "";
+  const F = LABL_FAIL[id] || { title: GAMES[id].failTitle, line: "" };
+  app.append(el("div", { class: "plate labl-result fail" }, el("div", { class: "labl-cause" }, LABL_CAUSE[o.cause] || LABL_CAUSE.other), el("h1", {}, o.title || F.title), kp(F.line, "font-size:calc(20px*var(--tx));max-width:48ch;margin:8px auto"), el("div", { class: "labl-show" }, lablStSides()[team].n + " is locked out for " + (st.d === 2 ? 60 : 30) + " s"), el("button", { class: "btn go", style: "min-height:56px;min-width:240px;margin-top:10px", onclick: () => go({ g: "bbterm", m: "mg", from: "run" }) }, "Back to the station")));
+  setTimeout(() => { if (!lablSt() || lablSt().kind !== "mg") return; if (document.querySelector(".labl-result.fail")) go({ g: "bbterm", m: "mg", from: "run" }); }, 8000);
+};
+/* I got tagged while a station is live: back to the station, nothing recorded against the side */
+const EP4_play = play;
+play = function (id, d, practice, opts) {
+  const r = EP4_play(id, d, practice, opts);
+  const st = lablSt();
+  if (st && st.kind === "mg" && st.team != null) { const b = app.querySelector(".labl-tagged"); if (b) { const nb = b.cloneNode(true); nb.addEventListener("click", () => { try { clearPending(); } catch (e) {} stop(); delete st.team; lablStSave(st); go({ g: "bbterm", m: "mg", from: "run" }); }); b.replaceWith(nb); } }
+  return r;
+};
+/* ---- Hardpoint on this tablet: the live hill as a huge letter, moving every 60 to 90 s with a 15 s warning ---- */
+function lablStHp() {
+  const st = lablSt() || {}, it = lablCurItem(), S = lablStSides(), P0 = BBP.get(), RT = []; cleanup = () => RT.forEach(clearInterval);
+  const out = el("div", { class: "colorsafe st-screen" });
+  if (!st.kind) {
+    const len = bbModeLen(it ? it.mode : "Hardpoint", P0, it);
+    const seq = []; let t = 0; const hills = ["A", "B", "C"]; let last = -1; while (t < len) { let h; do { h = Math.floor(Math.random() * 3); } while (h === last && hills.length > 1); last = h; const dur = 60 + Math.floor(Math.random() * 31); seq.push({ h: hills[h], at: t, dur }); t += dur; }
+    const go2 = el("button", { class: "btn go", style: "width:100%;min-height:80px;font-size:calc(28px*var(--tx))" }, "▶ Start the round");
+    go2.addEventListener("click", () => { go2.disabled = true; go2.textContent = "3… 2… 1…"; const s2 = { kind: "hp2", len, seq, t0: 0, held: null, since: 0, secs: [0, 0], warned: {} }; lablStCountdown(s2, route); });
+    out.append(lablStBar("Hardpoint · setup", { len }), plate(el("h1", {}, "Hardpoint on this tablet"), kp("Mark hills A, B and C on the field. The live hill shows here as a big letter and moves every 60 to 90 seconds with a 15-second warning. The Board Member taps who holds the live hill: RED, BLUE or Contested. Most seconds held wins.", "font-size:calc(18px*var(--tx))"), kp("Schedule: " + seq.map(x => x.h + " " + x.dur + "s").join(" → "), "color:var(--bone-dim);font-size:calc(13px*var(--tx))"), go2), el("div", { class: "row" }, lablStBack()));
+    app.append(out); return;
+  }
+  const cur = () => { const e = (Date.now() - st.t0) / 1000; return st.seq.find(x => e >= x.at && e < x.at + x.dur) || st.seq[st.seq.length - 1]; };
+  const credit = () => { if (st.held != null && st.since) { st.secs[st.held] += (Date.now() - st.since) / 1000; } st.since = Date.now(); };
+  const finish = () => { credit(); const a = Math.round(st.secs[0]), b = Math.round(st.secs[1]); lablStHand(a === b ? -1 : a > b ? 0 : 1, [a, b], "obj"); };
+  const hill = el("div", { class: "st-hill", "data-sthill": "1" }, cur().h), next = el("div", { class: "st-next", "data-stnext": "1" }, "");
+  const tally = el("div", { class: "st-tally" }, ...[0, 1].map(i => el("div", { style: "--tc:" + BB_COL[S[i].col] }, el("b", {}, S[i].n), el("span", { "data-stsecs": String(i) }, "0 s"))));
+  const hold = i => { credit(); st.held = i; lablStSave(st); SFX.click(); out.querySelectorAll(".st-hold").forEach((b, j) => b.classList.toggle("on", (i == null ? 2 : i) === j)); };
+  const holds = el("div", { class: "st-holds" }, el("button", { class: "btn st-hold" + (st.held === 0 ? " on" : ""), style: "--tc:" + BB_COL[S[0].col], onclick: () => hold(0) }, S[0].n + " HOLDS"), el("button", { class: "btn st-hold" + (st.held === 1 ? " on" : ""), style: "--tc:" + BB_COL[S[1].col], onclick: () => hold(1) }, S[1].n + " HOLDS"), el("button", { class: "btn st-hold" + (st.held == null ? " on" : ""), style: "--tc:#aab6dc", onclick: () => hold(null) }, "CONTESTED"));
+  out.append(lablStBar("Hardpoint", st), el("div", { class: "st-hp" }, el("div", { class: "st-hill-lbl" }, "LIVE HILL"), hill, next, tally, holds), el("div", { class: "row", style: "gap:8px" }, lablStBack(), el("button", { class: "btn small", onclick: finish }, "End the round now")));
+  app.append(out);
+  const lastH = { h: cur().h };
+  RT.push(setInterval(() => {
+    if (!st.t0 || st.horn) return;
+    const c = cur(), e = (Date.now() - st.t0) / 1000, leftOnHill = c.at + c.dur - e;
+    if (c.h !== lastH.h) { lastH.h = c.h; hill.textContent = c.h; BBSND.swap(); }
+    next.textContent = leftOnHill <= 15 ? "⚠ HILL MOVES IN " + Math.ceil(leftOnHill) + " s" : "moves in " + Math.ceil(leftOnHill) + " s";
+    if (leftOnHill <= 15 && !st.warned[c.at]) { st.warned[c.at] = 1; lablStSave(st); BBSND.check(); }
+    credit(); lablStSave(st);
+    tally.querySelectorAll("[data-stsecs]").forEach(sp => (sp.textContent = Math.round(st.secs[+sp.dataset.stsecs]) + " s"));
+  }, 500));
+  lablStStart(st, finish, RT);
+  if (st.horn) finish();
+}
+/* ---- Territories on this tablet: at the horn the Board Member taps each marker's owner ---- */
+function lablStTerr() {
+  const st = lablSt() || {}, it = lablCurItem(), S = lablStSides(), P0 = BBP.get(), RT = []; cleanup = () => RT.forEach(clearInterval);
+  const out = el("div", { class: "colorsafe st-screen" });
+  if (!st.kind) {
+    const len = bbModeLen(it ? it.mode : "Territories", P0, it); let n = 5;
+    const box = el("div"); const render = () => { box.innerHTML = ""; box.append(el("div", { class: "row", style: "gap:8px" }, ...[3, 5].map(k => el("button", { class: "btn small labl-chip" + (n === k ? " on" : ""), onclick: () => { n = k; render(); } }, k + " markers"))), el("button", { class: "btn go", style: "width:100%;min-height:80px;font-size:calc(28px*var(--tx));margin-top:10px", onclick: e => { e.target.disabled = true; e.target.textContent = "3… 2… 1…"; const s2 = { kind: "terr2", len, n, t0: 0, own: {} }; lablStCountdown(s2, route); } }, "▶ Start the round")); };
+    render();
+    out.append(lablStBar("Territories · setup", { len }), plate(el("h1", {}, "Territories on this tablet"), kp("Set the markers out. At the horn, tap who holds each marker; the side with more markers wins.", "font-size:calc(18px*var(--tx))"), box), el("div", { class: "row" }, lablStBack()));
+    app.append(out); return;
+  }
+  const markers = Array.from({ length: st.n }, (_, i) => String.fromCharCode(65 + i));
+  const counts = () => [0, 1].map(i => markers.filter(m => st.own[m] === i).length);
+  const finish = () => { const [a, b] = counts(); lablStHand(a === b ? -1 : a > b ? 0 : 1, [a, b], "obj"); };
+  const grid = el("div", { class: "st-markers" }, ...markers.map(m => { const b = el("button", { class: "btn st-marker", style: "--tc:" + (st.own[m] == null ? "#aab6dc" : BB_COL[S[st.own[m]].col]) }, el("b", {}, m), el("span", {}, st.own[m] == null ? "nobody" : S[st.own[m]].n)); b.addEventListener("click", () => { st.own[m] = st.own[m] == null ? 0 : st.own[m] === 0 ? 1 : null; lablStSave(st); SFX.click(); route(); }); return b; }));
+  const [a, b] = counts();
+  out.append(lablStBar("Territories", st), plate(el("h1", {}, st.horn ? "Horn! Tap each marker's owner" : "Round in play"), kp(st.horn ? "Tap a marker to cycle " + S[0].n + " → " + S[1].n + " → nobody." : "At the horn, tap who holds each marker.", "color:var(--bone-dim)"), grid, el("div", { class: "st-count" }, S[0].n + " " + a + " · " + S[1].n + " " + b),
+    st.horn ? el("button", { class: "btn go", style: "width:100%;min-height:64px;font-size:calc(22px*var(--tx))", onclick: finish }, a === b ? "Log a draw" : "Log it: " + S[a > b ? 0 : 1].n + " wins " + Math.max(a, b) + "–" + Math.min(a, b)) : ""),
+    el("div", { class: "row", style: "gap:8px" }, lablStBack(), st.horn ? "" : el("button", { class: "btn small", onclick: () => { st.horn = 1; lablStSave(st); route(); } }, "Horn now")));
+  app.append(out);
+  if (!st.horn) lablStStart(st, () => route(), RT);
+}
+const LABL_ST_KINDS = { mg: "Mini-game station", hp2: "Hardpoint (this tablet)", terr2: "Territories (this tablet)" };
+const EP4_arenaPage = arenaPage;
+arenaPage = function () {
+  const g = NAV.get("g"), m = NAV.get("m");
+  if (g === "bbterm" && LABL_ST_KINDS[m]) { DIR_OK = false; if (m === "mg") return lablStMg(); if (m === "hp2") return lablStHp(); return lablStTerr(); }
+  // a mini-game opened from the station plays inside the arena mode
+  if (g && GAMES[g] && lablSt() && lablSt().kind === "mg") { DIR_OK = false; return intro(g, clamp(parseInt(NAV.get("d") || "1", 10) || 1, 1, 2), {}); }
+  return EP4_arenaPage();
+};
+/* a station result waiting on the run screen: EP prefills the winner; LABL keeps how, the finish time and the game */
+const EP4_bbRun = bbRun;
+bbRun = function () {
+  const pend = jget("ep_bbpending", null), run = BBR.get();
+  if (pend && pend.how) LABL_LOG = { key: lablLogKey(run), how: pend.how, st: {}, mgs: pend.mgs, mgGame: pend.mgGame };
+  const r = EP4_bbRun();
+  const it = BBP.get().items[run.idx];
+  if (it && it.k === "mode" && arenaUnlocked() && !(run.clk && run.clk.t0)) {
+    const I = bbInfo(it.mode), tools = app.querySelector(".labl-runtools");
+    if (tools) {
+      const kinds = [["mg", "🎯 Mini-game station"]];
+      if (it.mode === "Hardpoint") kinds.unshift(["hp2", "⛰ Run Hardpoint here"]);
+      if (/Territories/.test(it.mode)) kinds.unshift(["terr2", "🚩 Score Territories here"]);
+      kinds.forEach(([k, l]) => tools.append(el("button", { class: "btn" + (k !== "mg" ? " go" : ""), style: "min-height:52px", onclick: () => { lablStSave(null); BBR.save(run); go({ g: "bbterm", m: k, from: "run" }); } }, l)));
+    }
+    if (I.term === "hp" || I.term === "zone") app.querySelectorAll(".colorsafe > .plate p, .colorsafe > .plate button").forEach(n => { if (/hill phones|zone terminal|Set the start time|Arm for/.test(n.textContent)) n.style.display = "none"; });
+  }
+  return r;
+};
+const EP4_bbSaveRound = bbSaveRound;
+bbSaveRound = function (r) { if (LABL_LOG && LABL_LOG.key === lablLogKey(BBR.get())) { if (LABL_LOG.mgs != null) r.mgs = LABL_LOG.mgs; if (LABL_LOG.mgGame) r.mgGame = LABL_LOG.mgGame; } const it = lablCurItem(); if (it && it.story) r.story = it.story; return EP4_bbSaveRound(r); };
+
+/* ---- the story library ---- */
+const LABL_STORY_SEED = [
+  { id: "vip", title: "Escort the VIP", intro: "A courier carries something the whole league wants. Red gets them across; Blue stops them. Three chapters, and the last one puts the tablet in play.", chapters: [
+    { mode: "Ball Push/Drone Delivery/VIP Escort", start: "The VIP starts at the south barrier with Red. Blue sets up at the north end.", end: "The VIP touches the far barrier, or the clock runs out (Blue wins).", game: "", mg: "arena" },
+    { mode: "Capture the Flag", start: "The VIP dropped the package. Both sides race for it.", end: "A flag home wins, first to 2 rounds.", game: "", mg: "arena" },
+    { mode: "Story Mission", start: "The package is a locked case at the tablet. Red escorts a player to it; Blue holds them off.", end: "A Red player beats the mini-game at the tablet, or the horn (Blue wins).", game: "lock", mg: "arena" } ] },
+  { id: "relic", title: "Hold the Relic", intro: "One relic, one hill, and everybody wants to be standing on it when the horn goes.", chapters: [
+    { mode: "King of the Hill", start: "The relic sits on the center hill. Hold it.", end: "Most time on the hill at the horn.", game: "", mg: "arena" },
+    { mode: "Hardpoint", start: "The relic keeps moving. Follow the live hill on the tablet.", end: "Most seconds held at the horn.", game: "", mg: "arena" },
+    { mode: "Story Mission", start: "The relic has to be armed at the tablet before it can be claimed.", end: "First side to beat the mini-game claims it.", game: "wire", mg: "arena" } ] },
+  { id: "retrieval", title: "Retrieval", intro: "Scattered supplies, a locked cache, and one tablet that opens it. Five chapters for a special event.", chapters: [
+    { mode: "Scavenger 3-15", start: "Darts are scattered across the field. Grab what you can.", end: "Elimination, or the horn.", game: "", mg: "arena" },
+    { mode: "Territories", start: "Hold the supply points.", end: "Most markers at the horn (scored on the tablet).", game: "", mg: "arena" },
+    { mode: "Search & Destroy", start: "Plant the charge at the cache.", end: "Charge goes off, or it's defused.", game: "", mg: "arena" },
+    { mode: "Story Mission", start: "The cache is open. One player must prime the air line at the tablet.", end: "First side to beat the mini-game wins; both may finish, faster time wins.", game: "pipe", mg: "arena" },
+    { mode: "Zombie Deathmatch", start: "The cache was a trap. Survive.", end: "Last side standing.", game: "", mg: "arena" } ] }
+];
+function lablStories() { const L = lablCfg().stories; return Array.isArray(L) && L.length ? L : LABL_STORY_SEED.map(x => JSON.parse(JSON.stringify(x))); }
+function lablStoriesSave(L) { lablCfgSet({ stories: L }); }
+function lablStoryChapter(ref) { const s = lablStories().find(x => x.id === (ref || {}).sid); return s ? Object.assign({ storyTitle: s.title, intro: s.intro, n: s.chapters.length }, s.chapters[(ref || {}).ci] || {}) : null; }
+function lablStoryEdit(story, say) {
+  const S = JSON.parse(JSON.stringify(story || { id: "s" + Math.random().toString(36).slice(2, 8), title: "New story", intro: "", chapters: [{ mode: "Capture the Flag", start: "", end: "", game: "", mg: "arena" }] }));
+  const ov = el("div", { class: "modal" }), box = el("div", { class: "modal-box plate labl-edit" }), close = () => ov.remove();
+  const body = el("div");
+  const draw = () => {
+    body.innerHTML = "";
+    const t = el("input", { type: "text", class: "labl-in", value: S.title, maxlength: "40" }); t.addEventListener("input", () => (S.title = t.value));
+    const intro = el("textarea", { class: "labl-in", rows: "3" }, S.intro || ""); intro.addEventListener("input", () => (S.intro = intro.value));
+    body.append(el("label", { class: "labl-lbl" }, "Title", t), el("label", { class: "labl-lbl" }, "Intro · read it out at the briefing", intro));
+    S.chapters.forEach((c, i) => {
+      const mode = el("select", { class: "labl-in" }, ...BB_MODES.map(m => el("option", { value: m }, m))); mode.value = c.mode; mode.addEventListener("change", () => (c.mode = mode.value));
+      const start = el("textarea", { class: "labl-in", rows: "2", placeholder: "How it starts" }, c.start || ""); start.addEventListener("input", () => (c.start = start.value));
+      const end = el("textarea", { class: "labl-in", rows: "2", placeholder: "How it ends" }, c.end || ""); end.addEventListener("input", () => (c.end = end.value));
+      const game = el("select", { class: "labl-in" }, el("option", { value: "" }, "No mini-game"), ...orderedIds().filter(id => !LABL_MULTI_GAMES.includes(id)).map(id => el("option", { value: id }, GAMES[id].icon + " " + GAMES[id].title))); game.value = c.game || ""; game.addEventListener("change", () => (c.game = game.value));
+      const mg = el("button", { class: "btn small labl-chip" + (c.mg === "story" ? "" : " on"), onclick: () => { c.mg = c.mg === "story" ? "arena" : "story"; draw(); } }, c.mg === "story" ? "Story timing" : "Arena timing");
+      body.append(el("div", { class: "labl-chapter" }, el("div", { class: "row", style: "justify-content:space-between" }, el("h3", {}, "CHAPTER " + (i + 1)), el("span", { class: "row", style: "gap:6px" }, i > 0 ? el("button", { class: "btn small", onclick: () => { [S.chapters[i - 1], S.chapters[i]] = [S.chapters[i], S.chapters[i - 1]]; draw(); } }, "↑") : "", S.chapters.length > 1 ? el("button", { class: "btn small bad", onclick: () => { S.chapters.splice(i, 1); draw(); } }, "✕") : "")),
+        el("label", { class: "labl-lbl" }, "Mode", mode), el("label", { class: "labl-lbl" }, "Start", start), el("label", { class: "labl-lbl" }, "End condition", end), el("div", { class: "row", style: "gap:8px;align-items:center" }, el("label", { class: "labl-lbl", style: "flex:1" }, "Mini-game at the tablet", game), mg)));
+    });
+    if (S.chapters.length < 5) body.append(el("button", { class: "btn small", onclick: () => { S.chapters.push({ mode: "Capture the Flag", start: "", end: "", game: "", mg: "arena" }); draw(); } }, "+ Chapter"));
+  };
+  draw();
+  const save = el("button", { class: "btn go", style: "flex:2;min-height:56px", onclick: () => { const L = lablStories(); const i = L.findIndex(x => x.id === S.id); if (i >= 0) L[i] = S; else L.push(S); lablStoriesSave(L); SFX.good(); close(); if (say) say("Story saved."); route(); } }, "Save story");
+  box.append(el("h3", {}, "STORY LIBRARY"), el("h1", {}, story ? "Edit the story" : "New story"), body, el("div", { class: "row", style: "gap:8px;margin-top:12px" }, el("button", { class: "btn", style: "flex:1;min-height:56px", onclick: close }, "Cancel"), save));
+  ov.append(box); document.body.append(ov);
+}
+lablStoryTab = function (say) {
+  const L = lablStories();
+  return el("div", {}, plate(el("h2", {}, "Story library"), kp("For special events. A story is an intro plus up to 5 chapters; each chapter is a mode block with a start, an end condition, an optional mini-game at the tablet and a timing profile. Build a story day from the Arena's Day plan.", "color:var(--bone-dim)"),
+    el("div", { class: "labl-roster" }, ...L.map(s => el("div", { class: "labl-row" }, el("span", {}, el("b", {}, s.title), el("small", {}, " · " + s.chapters.length + " chapter" + (s.chapters.length === 1 ? "" : "s") + " · " + s.chapters.map(c => c.mode).join(" → "))),
+      el("span", { class: "row", style: "gap:6px" }, el("button", { class: "btn small", onclick: () => lablStoryEdit(s, say) }, "Edit"), el("button", { class: "btn small", onclick: () => { const c = JSON.parse(JSON.stringify(s)); c.id = "s" + Math.random().toString(36).slice(2, 8); c.title = s.title + " (copy)"; lablStoriesSave(L.concat([c])); route(); } }, "Duplicate"), el("button", { class: "btn small bad", onclick: () => dirApprove("Story", "Delete " + s.title + "?", [], "Delete", () => { lablStoriesSave(L.filter(x => x.id !== s.id)); route(); }) }, "✕"))))),
+    el("button", { class: "btn go", style: "min-height:52px;margin-top:10px", onclick: () => lablStoryEdit(null, say) }, "+ New story")));
+};
+/* a story day: the story's chapters become the mode blocks, in order, sweep after chapter 3, teardown at the end */
+function lablStoryDay(P, story) {
+  const brief = P.items.find(x => x.k === "brk" && x.kind === "brief") || { id: bbId(), k: "brk", kind: "brief", min: P.first ? BB_DAY.briefFirst : BB_DAY.brief, at: P.start };
+  const items = [brief];
+  story.chapters.forEach((c, i) => {
+    if (i > 0) items.push({ id: bbId(), k: "brk", kind: i === 3 ? "sweep" : "reload", min: 10 });
+    items.push({ id: bbId(), k: "mode", mode: BB_INFO[c.mode] ? c.mode : "Story Mission", n: bbModeN(c.mode, P), comp: false, mg: c.mg || "arena", story: { sid: story.id, ci: i }, both: /both/i.test(c.end || "") });
+  });
+  items.push({ id: bbId(), k: "brk", kind: "teardown", min: 20 });
+  P.items = items; P.storyId = story.id;
+  return P;
+}
+const EP4_bbPlanEditor = bbPlanEditor;
+bbPlanEditor = function (inRun) {
+  const box = EP4_bbPlanEditor(inRun), P = BBP.get();
+  if (!inRun) {
+    const L = lablStories(), sel = el("select", { class: "labl-in", style: "max-width:320px" }, ...L.map(s => el("option", { value: s.id }, s.title + " · " + s.chapters.length + " ch.")));
+    const b = el("button", { class: "btn", style: "min-height:44px", onclick: () => dirApprove("Day plan", "Build a story day?", [kp("Replaces the plan with the story's chapters, in order, a dart sweep after chapter 3 and teardown at the end.")], "Build", () => { const s = L.find(x => x.id === sel.value); if (!s) return; lablStoryDay(P, s); BBP.save(P); SFX.good(); route(); }) }, "📖 Build a story day");
+    const fold0 = box.querySelector("details.fold");
+    const row = el("div", { class: "row", style: "gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0" }, el("span", { class: "labl-lbl2", style: "margin:0" }, "Special event"), sel, b);
+    if (fold0) fold0.after(row); else box.prepend(row);
+    // chapter chips on story rows
+    const rows = [...box.querySelectorAll(".bbp-row")];
+    P.items.forEach((x, i) => { if (x.k === "mode" && x.story) { const w = rows[i] && rows[i].querySelector(".bbp-w"); const c = lablStoryChapter(x.story); if (w && c) w.append(el("span", { class: "labl-chip mini on", style: "margin-left:6px" }, "Ch. " + (x.story.ci + 1) + " · " + c.storyTitle)); } });
+  }
+  return box;
+};
+/* before a chapter's rules card: the chapter title, its story text, and how the last chapter ended */
+function lablChapterCard(it, run) {
+  const c = lablStoryChapter(it.story); if (!c) return null;
+  const prev = it.story.ci > 0 ? lablStoryChapter({ sid: it.story.sid, ci: it.story.ci - 1 }) : null;
+  const prevRounds = bbRoundsAll().filter(r => r.ev === EVENT_SALT && r.story && r.story.sid === it.story.sid && r.story.ci === it.story.ci - 1);
+  const last = prevRounds[prevRounds.length - 1];
+  const who = last ? (last.fmt === "ffa" ? (last.nm || {})[last.win] : typeof last.win === "string" ? (last.nm || {})[last.win] : last.win >= 0 ? last.teams[last.win].n : "nobody") : null;
+  const ov = el("div", { class: "modal labl-rules-ov", id: "labl-chapter" }), box = el("div", { class: "modal-box plate labl-rules" }), close = () => ov.remove();
+  box.append(el("h3", {}, c.storyTitle.toUpperCase() + " · CHAPTER " + (it.story.ci + 1) + " OF " + c.n), el("h1", { class: "labl-rules-mode" }, it.mode),
+    it.story.ci === 0 && c.intro ? el("div", { class: "labl-rules-text" }, c.intro) : "",
+    prev ? el("div", { class: "labl-rules-win" }, "Last chapter: " + (who ? who + (prev.end ? " — " + prev.end : "") : "not played")) : "",
+    el("div", { class: "labl-rules-text" }, (c.start ? "START: " + c.start + " " : "") + (c.end ? "END: " + c.end : "")),
+    c.game && GAMES[c.game] ? el("div", { class: "labl-rules-win" }, "At the tablet: " + GAMES[c.game].title + " (open the Mini-game station from the run screen)") : "",
+    el("button", { class: "btn go", style: "width:100%;min-height:64px;font-size:calc(22px*var(--tx));margin-top:12px", onclick: () => { run.sc = it.id; BBR.save(run); SFX.good(); close(); route(); } }, "Chapter read ▶"));
+  ov.append(box); return ov;
+}
+const EP4_bbRunMode = bbRunMode;
+bbRunMode = function (it, run, P, T, Pl, unlocked, redraw, say, RT) {
+  if (unlocked && it.story && run.sc !== it.id && !(run.clk && run.clk.t0) && (run.rnd || 1) === 1) {
+    const box = EP4_bbRunMode(it, run, P, T, Pl, unlocked, redraw, say, RT);
+    document.getElementById("labl-rules") && document.getElementById("labl-rules").remove();   // the chapter card comes first; the rules card follows after "Chapter read"
+    setTimeout(() => { if (!document.getElementById("labl-chapter")) { const cc = lablChapterCard(it, run); if (cc) document.body.append(cc); } }, 0);
+    return box;
+  }
+  return EP4_bbRunMode(it, run, P, T, Pl, unlocked, redraw, say, RT);
+};
 /* ---- Scoreboard (player-facing, mode "8") ---- */
 /* lablBoard is defined in the Phase 6 block above: rotating slides. */
 

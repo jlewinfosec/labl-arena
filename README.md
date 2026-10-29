@@ -14,6 +14,7 @@ node draw.js                            # team draw: 30 players x 20 draws balan
 node mg.js after                        # mini-games: palette, lockouts, tagged, timing (before|after writes shots/mg-*/)
 node seasons.js                         # season ranking, Day Champion, both CSVs against hand-computed values
 node p6.js                              # Next Up (30 players, both sizes, no clipping) and the scoreboard slides
+node p7.js                              # story day, Hardpoint scored on the tablet, mini-game station win credits the side
 ```
 
 ## Rules for changing anything
@@ -42,7 +43,7 @@ node p6.js                              # Next Up (30 players, both sizes, no cl
 ## Storage keys (localStorage)
 
 `ep_cfg` (config, PIN, roster under `.roster` with `age` Y/T/A per player, LABL settings under `.labl`), `ep_bb` (rounds — each with `era` = season from its date ("2026 H2"), `comp`, `how` time/elim/obj/mg/forfeit/other, `st` {playerId: [tags, outs]} and an `ed` edit history when edited —
-awards), `ep_bbplan` (`zombies`; mode items carry `comp` and `mg`), `ep_bbpack` (packing-list ticks for the event), `ep_bbteams` (sides, plus `pool` / `bl` blaster S/F/B / `day` / `drawIdx` for the LABL draw), `ep_bbplan`, `ep_bbrun`, `ep_bbterm*`, `ep_mtab`, `ep_tablog`, `ep_lk`,
+awards), `ep_bbplan` (`zombies`; mode items carry `comp` and `mg`), `ep_bbpack` (packing-list ticks for the event), `ep_bbstation` (the live LABL station: mg / hp2 / terr2), `ep_bbteams` (sides, plus `pool` / `bl` blaster S/F/B / `day` / `drawIdx` for the LABL draw), `ep_bbplan`, `ep_bbrun`, `ep_bbterm*`, `ep_mtab`, `ep_tablog`, `ep_lk`,
 `ep_lock_<game>`. Keys keep their `ep_` prefix on purpose: renaming them would orphan saved data.
 
 ## Where things are in the EP code (search these names in LABL_Arena.html)
